@@ -9,15 +9,27 @@ set -euo pipefail
 #
 # Required env:
 #   CODESIGN_IDENTITY     Developer ID Application identity (name or hash)
-#   ICLOUD_PROVISIONING_PROFILE  Developer ID provisioning profile with the production iCloud container
-#   SPARKLE_PUBLIC_KEY    base64 EdDSA public key -> baked into Info.plist (SUPublicEDKey). generate_appcast
-#                         only signs the DMG if this matches the private key it signs with.
 #   OPENUSAGE_VERSION     human version, e.g. 0.7.0 (CFBundleShortVersionString)
 # Optional env:
 #   OPENUSAGE_BUILD       CFBundleVersion (monotonic). Default: git commit count.
-#   FEED_URL              appcast URL baked into the app. Default: GitHub Pages project URL.
+#   ICLOUD_PROVISIONING_PROFILE  Developer ID provisioning profile with the iCloud container. Omit it
+#                         (the fork default) to build without iCloud: Apple only issues a profile for a
+#                         container owned by the signing Team, so a fork cannot claim upstream's.
+#   SPARKLE_PUBLIC_KEY    base64 EdDSA public key -> baked into Info.plist (SUPublicEDKey). generate_appcast
+#                         only signs the DMG if this matches the private key it signs with. Omit it to
+#                         ship no update feed at all — which a fork wants: pointing at upstream's appcast
+#                         with upstream's key lets Sparkle "update" the fork back to the official build.
+#   FEED_URL              appcast URL baked into the app. Only used when SPARKLE_PUBLIC_KEY is set.
+#                         Default: GitHub Pages project URL.
+#   NOTARY_KEY / NOTARY_KEY_ID / NOTARY_ISSUER  App Store Connect API key (.p8 path, key id, issuer id).
+#                         Preferred locally — no password anywhere. Matches the convention in
+#                         linear-pake's scripts/apple-credentials.sh, which can be sourced to fill them.
+#   NOTARY_KEYCHAIN_PROFILE  notarytool keychain profile name (from `xcrun notarytool store-credentials`).
+#                         The app-specific password stays in the keychain instead of the environment
+#                         and shell history.
 #   NOTARY_APPLE_ID / NOTARY_APP_PASSWORD / NOTARY_TEAM_ID   Apple ID, app-specific password, and team
-#                         ID for notarytool. When all three are set, the app and DMG are notarized + stapled.
+#                         ID for notarytool. Used when NOTARY_KEYCHAIN_PROFILE is not set (this is what CI
+#                         supplies). Either way the app and DMG are notarized + stapled.
 #   ALLOW_UNNOTARIZED=1   Skip notarization for a LOCAL dry run. Without it, missing notary creds is a
 #                         hard error so CI never publishes an un-notarized build.
 
@@ -25,9 +37,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 : "${CODESIGN_IDENTITY:?set CODESIGN_IDENTITY to your Developer ID Application identity}"
-: "${ICLOUD_PROVISIONING_PROFILE:?set ICLOUD_PROVISIONING_PROFILE to the iCloud provisioning profile path}"
-: "${SPARKLE_PUBLIC_KEY:?set SPARKLE_PUBLIC_KEY to your base64 EdDSA public key}"
 : "${OPENUSAGE_VERSION:?set OPENUSAGE_VERSION, e.g. 0.7.0}"
+
+# iCloud and Sparkle are both optional in a fork build (see the header notes). A fork can't sign
+# upstream's iCloud container and must not ship upstream's update feed, so both default to off and
+# each is enabled only by supplying its input.
+ICLOUD=0
+[ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ] && ICLOUD=1
+SPARKLE=0
+[ -n "${SPARKLE_PUBLIC_KEY:-}" ] && SPARKLE=1
 
 APP_NAME="OpenUsage"
 BUNDLE_ID="com.robinebers.openusage"
@@ -62,19 +80,28 @@ ENTITLEMENTS="$DIST_DIR/OpenUsage.release.resolved.entitlements.plist"
 # opt out with ALLOW_UNNOTARIZED=1 (the build will then be Gatekeeper-blocked on other Macs). Missing
 # creds without that opt-out is a hard error so CI never publishes an un-notarized DMG.
 NOTARIZE=0
-if [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_APP_PASSWORD:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ]; then
+NOTARY_ARGS=()
+if [ -n "${NOTARY_KEY:-}" ] && [ -n "${NOTARY_KEY_ID:-}" ] && [ -n "${NOTARY_ISSUER:-}" ]; then
   NOTARIZE=1
+  NOTARY_ARGS=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+elif [ -n "${NOTARY_KEYCHAIN_PROFILE:-}" ]; then
+  NOTARIZE=1
+  NOTARY_ARGS=(--keychain-profile "$NOTARY_KEYCHAIN_PROFILE")
+elif [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_APP_PASSWORD:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ]; then
+  NOTARIZE=1
+  NOTARY_ARGS=(--apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_APP_PASSWORD" --team-id "$NOTARY_TEAM_ID")
 elif [ "${ALLOW_UNNOTARIZED:-}" = "1" ]; then
   echo "WARNING: ALLOW_UNNOTARIZED=1 — build will NOT be notarized (other Macs will block it)." >&2
 else
-  echo "Notarization creds missing (NOTARY_APPLE_ID / NOTARY_APP_PASSWORD / NOTARY_TEAM_ID)." >&2
+  echo "Notarization creds missing (NOTARY_KEY + NOTARY_KEY_ID + NOTARY_ISSUER," >&2
+  echo "or NOTARY_KEYCHAIN_PROFILE, or the NOTARY_APPLE_ID / NOTARY_APP_PASSWORD /" >&2
+  echo "NOTARY_TEAM_ID trio)." >&2
   echo "Set them, or set ALLOW_UNNOTARIZED=1 for a local dry run." >&2
   exit 1
 fi
 
 notarize() {  # $1: artifact to submit (.zip or .dmg)
-  xcrun notarytool submit "$1" \
-    --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_APP_PASSWORD" --team-id "$NOTARY_TEAM_ID" --wait
+  xcrun notarytool submit "$1" "${NOTARY_ARGS[@]}" --wait
 }
 
 echo "==> building $APP_NAME $VERSION ($BUILD) — universal (arm64 + x86_64)"
@@ -162,6 +189,30 @@ else
     --output-partial-info-plist /dev/null --output-format human-readable-text --errors --warnings
 fi
 
+# Sparkle keys ship only with a public key of your own. Without one the app carries no feed and never
+# checks for updates — the fork default, so an official release can't replace this build.
+SPARKLE_KEYS=""
+if [ "$SPARKLE" = "1" ]; then
+  SPARKLE_KEYS="  <key>SUFeedURL</key><string>$FEED_URL</string>
+  <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>3600</integer>"
+fi
+
+# The container declaration only belongs in a build that actually carries the iCloud entitlement.
+ICLOUD_KEYS=""
+if [ "$ICLOUD" = "1" ]; then
+  ICLOUD_KEYS="  <key>NSUbiquitousContainers</key>
+  <dict>
+    <key>iCloud.com.robinebers.openusage</key>
+    <dict>
+      <key>NSUbiquitousContainerIsDocumentScopePublic</key><false/>
+      <key>NSUbiquitousContainerName</key><string>OpenUsage</string>
+      <key>NSUbiquitousContainerSupportedFolderLevels</key><string>None</string>
+    </dict>
+  </dict>"
+fi
+
 cat >"$APP_CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -180,27 +231,21 @@ cat >"$APP_CONTENTS/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>SUFeedURL</key><string>$FEED_URL</string>
-  <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
-  <key>SUEnableAutomaticChecks</key><true/>
-  <key>SUScheduledCheckInterval</key><integer>3600</integer>
-  <key>NSUbiquitousContainers</key>
-  <dict>
-    <key>iCloud.com.robinebers.openusage</key>
-    <dict>
-      <key>NSUbiquitousContainerIsDocumentScopePublic</key><false/>
-      <key>NSUbiquitousContainerName</key><string>OpenUsage</string>
-      <key>NSUbiquitousContainerSupportedFolderLevels</key><string>None</string>
-    </dict>
-  </dict>
+$SPARKLE_KEYS
+$ICLOUD_KEYS
 </dict>
 </plist>
 PLIST
 
-cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
-"$ROOT_DIR/script/render_icloud_entitlements.sh" \
-  "$ENTITLEMENTS_TEMPLATE" "$ICLOUD_PROVISIONING_PROFILE" "$ENTITLEMENTS" \
-  "iCloud.com.robinebers.openusage"
+if [ "$ICLOUD" = "1" ]; then
+  cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
+  "$ROOT_DIR/script/render_icloud_entitlements.sh" \
+    "$ENTITLEMENTS_TEMPLATE" "$ICLOUD_PROVISIONING_PROFILE" "$ENTITLEMENTS" \
+    "iCloud.com.robinebers.openusage"
+else
+  # No profile to resolve the team prefix against, so the template signs as-is.
+  cp "$ENTITLEMENTS_TEMPLATE" "$ENTITLEMENTS"
+fi
 
 # Embed + sign Sparkle (Developer ID, hardened runtime, secure timestamp).
 "$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime --timestamp"
@@ -211,8 +256,10 @@ echo "==> signing app (Developer ID, hardened runtime)"
 codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" \
   --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
-codesign -d --entitlements :- "$APP_BUNDLE" 2>&1 | grep -q "iCloud.com.robinebers.openusage" \
-  || { echo "signed app is missing the production iCloud entitlement" >&2; exit 1; }
+if [ "$ICLOUD" = "1" ]; then
+  codesign -d --entitlements :- "$APP_BUNDLE" 2>&1 | grep -q "iCloud.com.robinebers.openusage" \
+    || { echo "signed app is missing the production iCloud entitlement" >&2; exit 1; }
+fi
 
 # Notarize + staple the app itself (not just the DMG) so it launches cleanly even offline after a
 # Sparkle update extracts it from the disk image.
