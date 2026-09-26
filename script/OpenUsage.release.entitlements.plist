@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Fork build: no iCloud.
+
+  Upstream signs with its own Team and claims `iCloud.com.robinebers.openusage`. A fork can't: Apple
+  only issues a provisioning profile for a container owned by the signing Team, so keeping the
+  entitlement here would fail signing for anyone but upstream. iCloud Sync is simply unavailable in
+  fork builds; everything else — the local scanners, every provider card — is unaffected.
+
+  To restore it, create a container under your own Team, put its id here and in release.sh's
+  NSUbiquitousContainers, and pass ICLOUD_PROVISIONING_PROFILE.
+-->
 <plist version="1.0">
-<dict>
-  <key>com.apple.developer.icloud-container-identifiers</key>
-  <array>
-    <string>iCloud.com.robinebers.openusage</string>
-  </array>
-  <key>com.apple.developer.icloud-services</key>
-  <array>
-    <string>CloudDocuments</string>
-  </array>
-  <key>com.apple.developer.ubiquity-container-identifiers</key>
-  <array>
-    <string>$(TeamIdentifierPrefix)iCloud.com.robinebers.openusage</string>
-  </array>
-</dict>
+<dict/>
 </plist>
