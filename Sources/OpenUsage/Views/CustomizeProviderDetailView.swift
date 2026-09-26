@@ -58,7 +58,7 @@ struct CustomizeProviderDetailView: View {
 
     private func metricSection(_ title: String, metrics: [WidgetDescriptor], providerID: String) -> some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            Text(title)
+            Text(localized: title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
@@ -86,7 +86,7 @@ struct CustomizeProviderDetailView: View {
             .frame(height: 30)
             .padding(8)
             .overlay(
-                Text("Drag metrics here")
+                Text(localized: "Drag metrics here")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             )

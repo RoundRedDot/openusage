@@ -23,7 +23,7 @@ struct ICloudSyncSettingsSection: View {
 
             VStack(spacing: 0) {
                 HStack(spacing: 7) {
-                    Text("Sync Across Macs")
+                    Text(localized: "Sync Across Macs")
                     if sync.enabled, sync.isSyncing, sync.serviceError == nil {
                         MotionAwareProgressView(controlSize: .small)
                             .transition(.scale(scale: 0.8).combined(with: .opacity))
@@ -55,7 +55,7 @@ struct ICloudSyncSettingsSection: View {
         if let error = sync.serviceError { inlineNotice(error) }
 
         if sync.displayedDocuments.isEmpty, !sync.isSyncing, sync.serviceError == nil {
-            Text("Waiting for this Mac’s first iCloud update…")
+            Text(localized: "Waiting for this Mac’s first iCloud update…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
@@ -79,7 +79,7 @@ struct ICloudSyncSettingsSection: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if isThisMac {
-                        Text("This Mac")
+                        Text(localized: "This Mac")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 5)
@@ -89,7 +89,7 @@ struct ICloudSyncSettingsSection: View {
                     }
                 }
                 TimelineView(.periodic(from: .now, by: 60)) { context in
-                    Text("Updated \(relativeAge(document.updatedAt, now: context.date))")
+                    Text(L10n.format("Updated %@", relativeAge(document.updatedAt, now: context.date)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -102,7 +102,7 @@ struct ICloudSyncSettingsSection: View {
     }
 
     private func inlineNotice(_ text: String) -> some View {
-        Text(text)
+        Text(localized: text)
             .font(.caption)
             .foregroundStyle(Theme.notice)
             .padding(.horizontal, 12)
@@ -113,9 +113,9 @@ struct ICloudSyncSettingsSection: View {
 
     private func relativeAge(_ date: Date, now: Date) -> String {
         let seconds = max(0, now.timeIntervalSince(date))
-        if seconds < 60 { return "just now" }
-        if seconds < 3_600 { return "\(max(1, Int(seconds / 60)))m ago" }
-        if seconds < 86_400 { return "\(max(1, Int(seconds / 3_600)))h ago" }
-        return "\(max(1, Int(seconds / 86_400)))d ago"
+        if seconds < 60 { return L10n.t("just now") }
+        if seconds < 3_600 { return L10n.format("%dm ago", max(1, Int(seconds / 60))) }
+        if seconds < 86_400 { return L10n.format("%dh ago", max(1, Int(seconds / 3_600))) }
+        return L10n.format("%dd ago", max(1, Int(seconds / 86_400)))
     }
 }

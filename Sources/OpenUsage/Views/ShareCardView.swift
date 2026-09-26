@@ -67,7 +67,7 @@ struct ShareCardView: View {
     private var metricsCard: some View {
         if rows.isEmpty {
             DashboardMetricCard {
-                Text("No metrics to show")
+                Text(localized: "No metrics to show")
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)

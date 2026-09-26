@@ -15,21 +15,21 @@ struct CodexPricingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            Text("Cost Estimates")
+            Text(localized: "Cost Estimates")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
-                    Text("Fallback Model")
+                    Text(localized: "Fallback Model")
                     Spacer(minLength: 8)
                     Picker("Fallback Model", selection: $selectedModel) {
-                        Text("None").tag(CodexFallbackModelSetting.none)
+                        Text(localized: "None").tag(CodexFallbackModelSetting.none)
                         if selectionUnavailable {
-                            Text("Unavailable Model").tag(selectedModel)
+                            Text(localized: "Unavailable Model").tag(selectedModel)
                         }
                         ForEach(options) { option in
-                            Text(option.title).tag(option.id)
+                            Text(localized: option.title).tag(option.id)
                         }
                     }
                     .pickerStyle(.menu)
@@ -42,7 +42,7 @@ struct CodexPricingSection: View {
                     HStack(spacing: 6) {
                         MotionAwareProgressView(controlSize: .mini)
                             .accessibilityHidden(true)
-                        Text(activityLabel)
+                        Text(localized: activityLabel)
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -50,7 +50,7 @@ struct CodexPricingSection: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
                 }
-                Text("Estimate costs for models that don't have known pricing.")
+                Text(localized: "Estimate costs for models that don't have known pricing.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

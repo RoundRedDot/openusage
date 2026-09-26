@@ -19,6 +19,7 @@ struct SettingsScreen: View {
     @State private var commandLineTool = CommandLineToolInstaller()
     @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
+    @AppStorage(AppLanguage.key) private var language = AppLanguage.fallback
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     @AppStorage(ReduceAnimationsSetting.key) private var reduceAnimations = ReduceAnimationsSetting.fallback
@@ -93,6 +94,11 @@ struct SettingsScreen: View {
 
     private var generalSection: some View {
         section("General") {
+            // UI language. "Automatic" follows macOS and lands on English for a system language the
+            // app ships no strings for. Changing it rebuilds the popover (see `LocalizedRoot`).
+            row("Language") {
+                picker($language, options: AppLanguage.allCases, label: \.label)
+            }
             // The dashboard's cross-provider Total Spend card; at least one enabled spend-capable
             // provider must exist, so this toggle can't conjure it up alone.
             row("Show Total Spend") {
@@ -252,7 +258,7 @@ struct SettingsScreen: View {
                 // the glass background stretches the full row width instead of hugging the text.
                 // (Glass on macOS 26+, bordered fallback on macOS 15.)
                 Button { updater.checkForUpdates() } label: {
-                    Text("Check for Updates…").frame(maxWidth: .infinity)
+                    Text(localized: "Check for Updates…").frame(maxWidth: .infinity)
                 }
                 .glassButtonStyle()
                 .controlSize(.regular)
@@ -274,7 +280,7 @@ struct SettingsScreen: View {
         let needsAttention = notificationsAuth != .authorized && anyToggleOn
         return VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
             HStack(spacing: 6) {
-                Text("Notifications")
+                Text(localized: "Notifications")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 if needsAttention {
@@ -338,7 +344,7 @@ struct SettingsScreen: View {
                     Task { await refreshNotificationsAuth() }
                 }
             } label: {
-                Text(notificationsAuth == .denied ? "Open System Settings" : "Allow Notifications")
+                Text(localized: notificationsAuth == .denied ? "Open System Settings" : "Allow Notifications")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -375,11 +381,11 @@ struct SettingsScreen: View {
             row("Terminal Helper") {
                 switch commandLineTool.status {
                 case .installed:
-                    Button("Uninstall") { commandLineTool.uninstall() }
+                    Button(L10n.t("Uninstall")) { commandLineTool.uninstall() }
                 case .notInstalled:
-                    Button("Install…") { commandLineTool.install() }
+                    Button(L10n.t("Install…")) { commandLineTool.install() }
                 case .conflict:
-                    Text("Unavailable")
+                    Text(localized: "Unavailable")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -436,7 +442,7 @@ struct SettingsScreen: View {
             Button {
                 isPresentingResetConfirm = true
             } label: {
-                Text("Reset All Settings…")
+                Text(localized: "Reset All Settings…")
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity)
             }
@@ -444,7 +450,7 @@ struct SettingsScreen: View {
             .controlSize(.regular)
             .padding(.horizontal, 12)
             .padding(.vertical, density.controlRowPadding)
-            .alert("Reset All Settings?", isPresented: $isPresentingResetConfirm) {
+            .alert(L10n.t("Reset All Settings?"), isPresented: $isPresentingResetConfirm) {
                 Button("Reset", role: .destructive) {
                     withAnimation(Motion.spring) { container.resetAllSettings() }
                     launchAtLogin.update(to: false)
@@ -462,7 +468,7 @@ struct SettingsScreen: View {
     /// Glass on macOS 26+, bordered fallback on macOS 15.
     private func logButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).frame(maxWidth: .infinity)
+            Text(localized: title).frame(maxWidth: .infinity)
         }
         .glassButtonStyle()
         .controlSize(.regular)
@@ -480,7 +486,7 @@ struct SettingsScreen: View {
         @ViewBuilder rows: () -> some View
     ) -> some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            Text(title)
+            Text(localized: title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
@@ -495,7 +501,7 @@ struct SettingsScreen: View {
     /// as a Customize metric row so the cards share one rhythm.
     private func row(_ label: String, @ViewBuilder control: () -> some View) -> some View {
         HStack(spacing: 10) {
-            Text(label)
+            Text(localized: label)
             Spacer(minLength: 8)
             control()
         }
@@ -507,7 +513,7 @@ struct SettingsScreen: View {
     /// General/Advanced error lines and the "this setting is paused" captions (Increase Transparency
     /// paused by a system accessibility setting, or by Party mode taking over the look).
     private func inlineNotice(_ text: String) -> some View {
-        Text(text)
+        Text(localized: text)
             .font(.caption)
             .foregroundStyle(Theme.notice)
             .padding(.horizontal, 12)
@@ -524,7 +530,7 @@ struct SettingsScreen: View {
     ) -> some View {
         Picker("", selection: selection) {
             ForEach(options, id: \.self) { option in
-                Text(label(option)).tag(option)
+                Text(localized: label(option)).tag(option)
             }
         }
         .pickerStyle(.menu)
