@@ -117,6 +117,7 @@ is still 0 because OpenCode reports whole percentages.
 | Ollama | `session`, `weekly`, `monthly` |
 | OpenCode | `session`, `weekly`, `monthly` |
 | OpenRouter | `credits`, `balance`, `keyLimit` |
+| Pi | _none_ — pi has no account quota, only spend history |
 | Z.ai | `session`, `weekly`, `webSearches` |
 
 Charts, colors, subtitles, formatted badges, layout state, and historical spend periods stay out of this
