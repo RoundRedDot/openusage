@@ -305,11 +305,12 @@ final class ClaudeProvider: ProviderRuntime {
     ) async -> ProviderSnapshot {
         var mapped = initialUsage
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
-        // shared pricing store, merged with Claude usage that happened inside pi (attributed back here).
-        // Both scans run on their scanner actors, off the main actor, and do not require an OAuth login.
+        // shared pricing store. Pi usage folds in only when `PiProviderMapping.foldsIntoProviderCards`
+        // is on; it is off so that spend stays on the pi card. Both scans run on their scanner actors,
+        // off the main actor, and do not require an OAuth login.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
-        let piScan = allowsUnattributedPiUsage
+        let piScan = allowsUnattributedPiUsage && PiProviderMapping.foldsIntoProviderCards
             ? await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
             : nil
         var usageHistory: ProviderUsageHistory?

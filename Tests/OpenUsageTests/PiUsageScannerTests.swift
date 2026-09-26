@@ -63,9 +63,12 @@ final class PiUsageScannerTests: XCTestCase {
         XCTAssertEqual(entry?.tokens.cacheWrite5m, 600)
     }
 
-    func testMapsCodexAndSkipsUnmappedAndNonAssistant() {
+    func testMapsCodexAndKeepsUnmappedButSkipsNonAssistant() {
         XCTAssertEqual(PiUsageScanner.parseLine(line(provider: "openai-codex"))?.cardID, "codex")
-        XCTAssertNil(PiUsageScanner.parseLine(line(provider: "nvidia-nim")))
+        // A provider with no card of its own is still parsed — the pi card is where it shows up.
+        let unmapped = PiUsageScanner.parseLine(line(provider: "deepseek"))
+        XCTAssertNil(unmapped?.cardID)
+        XCTAssertEqual(unmapped?.piProvider, "deepseek")
         let userLine = Data(#"{"type":"message","timestamp":"2026-07-12T10:00:00.000Z","message":{"role":"user","provider":"anthropic","usage":{}}}"#.utf8)
         XCTAssertNil(PiUsageScanner.parseLine(userLine))
     }
@@ -133,6 +136,63 @@ final class PiUsageScannerTests: XCTestCase {
             cardID: "claude", since: .distantPast, pricing: .empty
         )
         XCTAssertTrue(scan.series.daily.isEmpty)
+    }
+
+    /// The pi card's own aggregation: a nil card counts every request pi made, including providers
+    /// with no OpenUsage card of their own.
+    func testNilCardAggregatesEveryProvider() {
+        let entries = [
+            PiUsageScanner.parseLine(line(id: "a", provider: "anthropic", cost: "0.5"))!,
+            PiUsageScanner.parseLine(line(id: "b", provider: "openai-codex", cost: "0.25"))!,
+            PiUsageScanner.parseLine(line(id: "c", provider: "deepseek", model: "deepseek-flash", cost: "0.125"))!
+        ]
+        let scan = PiUsageScanner.aggregate(entries: entries, cardID: nil, since: .distantPast, pricing: .empty)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.875, accuracy: 0.0001)
+        XCTAssertEqual(scan.series.daily.first?.totalTokens, 450)
+    }
+
+    /// The unmapped provider carries pi's own cost, so the pi card prices it without any pricing data.
+    func testUnmappedProviderUsesCarriedCost() {
+        let entry = PiUsageScanner.parseLine(line(provider: "deepseek", model: "deepseek-flash", cost: "0.0125"))!
+        let scan = PiUsageScanner.aggregate(entries: [entry], cardID: nil, since: .distantPast, pricing: .empty)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.0125, accuracy: 0.000_001)
+        XCTAssertEqual(scan.modelUsage?.daily.first?.models.first?.model, "deepseek-flash · DeepSeek")
+    }
+
+    // MARK: - Model labels
+
+    /// The pi card mixes providers, so each model says which one billed it. The same model name
+    /// arriving over two providers stays two rows rather than silently merging.
+    func testPiCardLabelsModelsWithTheirProvider() throws {
+        let entries = [
+            PiUsageScanner.parseLine(line(id: "a", provider: "deepseek", model: "glm-5", cost: "0.2"))!,
+            PiUsageScanner.parseLine(line(id: "b", provider: "openrouter", model: "glm-5", cost: "0.1"))!
+        ]
+        let scan = PiUsageScanner.aggregate(entries: entries, cardID: nil, since: .distantPast, pricing: .empty)
+        let models = try XCTUnwrap(scan.modelUsage?.daily.first?.models)
+        XCTAssertEqual(Set(models.map(\.model)), ["glm-5 · DeepSeek", "glm-5 · OpenRouter"])
+    }
+
+    /// A provider card's rows are that provider's by definition, so they keep the bare model name.
+    func testProviderCardKeepsTheBareModelName() {
+        let scan = PiUsageScanner.aggregate(
+            entries: [PiUsageScanner.parseLine(line(provider: "anthropic", model: "claude-opus-4-8"))!],
+            cardID: "claude", since: .distantPast, pricing: .empty
+        )
+        XCTAssertEqual(scan.modelUsage?.daily.first?.models.first?.model, "claude-opus-4-8")
+    }
+
+    /// An unknown provider keeps pi's own id rather than a guessed brand name.
+    func testUnknownProviderKeepsPiRawID() {
+        XCTAssertEqual(PiProviderMapping.displayName(forPiProvider: "some-local-gateway"), "some-local-gateway")
+        XCTAssertEqual(PiProviderMapping.displayName(forPiProvider: "zhipu"), "Z.ai")
+    }
+
+    /// Unpriceable models are named in the tile's warning, so they carry the label too.
+    func testUnknownModelWarningCarriesTheProviderLabel() {
+        let entry = PiUsageScanner.parseLine(line(provider: "deepseek", model: "mystery-model", cost: "0"))!
+        let scan = PiUsageScanner.aggregate(entries: [entry], cardID: nil, since: .distantPast, pricing: .empty)
+        XCTAssertEqual(scan.unknownModelsByDay["2026-07-12"], ["mystery-model · DeepSeek"])
     }
 
     // MARK: - Mapping and merge

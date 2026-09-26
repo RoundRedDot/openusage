@@ -179,7 +179,11 @@ final class CodexProvider: ProviderRuntime {
             let claims = await Self.historyClaims(scope: historyScope, authStore: authStore,
                                                   logUsageScanner: logUsageScanner)
             return await Self.scanLocalHistory(
-                claims: claims, claimsPiUsage: historyScope.claimsPiUsage, piCardID: piCardID, pricing: pricing, fallbackModel: fallbackModel, logUsageScanner: logUsageScanner,
+                claims: claims,
+                // Pi usage folds in only when `PiProviderMapping.foldsIntoProviderCards` is on; it is off so
+                // that spend stays on the pi card and is not counted here as well.
+                claimsPiUsage: historyScope.claimsPiUsage && PiProviderMapping.foldsIntoProviderCards,
+                piCardID: piCardID, pricing: pricing, fallbackModel: fallbackModel, logUsageScanner: logUsageScanner,
                 piUsageScanner: piUsageScanner, openCodeUsageScanner: openCodeUsageScanner, now: now
             )
         }
