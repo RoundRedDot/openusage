@@ -120,7 +120,7 @@ struct RateLimitResetsDetail: View {
                 .font(.system(size: 20))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            Text("You have no rate limit resets")
+            Text(localized: "You have no rate limit resets")
                 .font(.system(size: density.supportingPointSize))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -138,10 +138,10 @@ struct RateLimitResetsDetail: View {
                 .font(.system(size: 20))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            Text("\(count) available")
+            Text(L10n.format("%d available", count))
                 .font(.system(size: density.supportingPointSize))
                 .foregroundStyle(.primary)
-            Text("Expiry times unavailable")
+            Text(localized: "Expiry times unavailable")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -246,7 +246,7 @@ struct RateLimitResetsDetail: View {
 
     private func row(_ entry: Entry) -> some View {
         HStack(spacing: 8) {
-            Text(entry.time)
+            Text(localized: entry.time)
                 .font(.system(size: density.supportingPointSize))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -272,7 +272,7 @@ struct RateLimitResetsDetail: View {
         // the animation rides `hoveredExpiry`), so the reveal reads as a fade, not a pop.
         Group {
             if claim != nil, hoveredExpiry == entry.date, !claimInProgress {
-                Button("Use") { beginConfirm(entry.date) }
+                Button(L10n.t("Use")) { beginConfirm(entry.date) }
                     .controlSize(.small)
                     .disabled(nothingToReset)
                     .hoverTooltip(nothingToReset ? "Nothing to reset right now" : nil)
@@ -294,21 +294,21 @@ struct RateLimitResetsDetail: View {
     /// the claim stays inside the popover.
     private func confirmRow(_ entry: Entry) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Use this reset?")
+            Text(localized: "Use this reset?")
                 .font(.system(size: density.supportingPointSize, weight: .medium))
                 .foregroundStyle(.primary)
-            Text("Immediately reset your usage limits. This can't be undone.")
+            Text(localized: "Immediately reset your usage limits. This can't be undone.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Button { runClaim(entry.date) } label: {
-                    Text("Reset").frame(maxWidth: .infinity)
+                    Text(localized: "Reset").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 Button { cancelConfirm() } label: {
-                    Text("Cancel").frame(maxWidth: .infinity)
+                    Text(localized: "Cancel").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -325,7 +325,7 @@ struct RateLimitResetsDetail: View {
     /// with a trailing spinner.
     private func claimingRow() -> some View {
         HStack(spacing: 8) {
-            Text("Resetting your usage…")
+            Text(localized: "Resetting your usage…")
                 .font(.system(size: density.supportingPointSize))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
@@ -342,7 +342,7 @@ struct RateLimitResetsDetail: View {
                 .font(.system(size: 14))
                 .foregroundStyle(banner.tint)
                 .accessibilityHidden(true)
-            Text(banner.text)
+            Text(localized: banner.text)
                 .font(.system(size: density.supportingPointSize, weight: .medium))
                 .foregroundStyle(banner.tint)
                 .fixedSize(horizontal: false, vertical: true)

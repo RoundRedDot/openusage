@@ -27,7 +27,7 @@ struct PopoverTopBar: View {
                 navigationBar(title: customizeTitle, back: customizeBack) {
                     resetAllButton
                 }
-                .alert("Reset All Customization?", isPresented: $isPresentingResetAllConfirm) {
+                .alert(L10n.t("Reset All Customization?"), isPresented: $isPresentingResetAllConfirm) {
                     Button("Reset All", role: .destructive) {
                         withAnimation(Motion.spring) { onResetAll() }
                     }
@@ -63,7 +63,7 @@ struct PopoverTopBar: View {
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
         ZStack {
-            Text(title)
+            Text(localized: title)
                 .font(.headline)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
@@ -82,7 +82,7 @@ struct PopoverTopBar: View {
 
     private func backButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label("Back", systemImage: "chevron.backward")
+            Label(L10n.t("Back"), systemImage: "chevron.backward")
                 .labelStyle(.iconOnly)
                 .frame(width: 16, height: 16)
         }
@@ -105,7 +105,7 @@ struct PopoverTopBar: View {
         .glassButtonStyle()
         .buttonBorderShape(.circle)
         .controlSize(.large)
-        .hoverTooltip("Reset \(layout.provider(id: providerID)?.displayName ?? providerID)")
+        .hoverTooltip(L10n.format("Reset %@", layout.provider(id: providerID)?.displayName ?? providerID))
         .accessibilityLabel("Reset")
     }
 
