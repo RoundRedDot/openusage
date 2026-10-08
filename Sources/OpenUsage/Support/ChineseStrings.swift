@@ -192,8 +192,7 @@ enum ChineseStrings {
         "Reset Times": "重置时间",
 
         "Hide From Screen Share": "屏幕共享时隐藏",
-        "Help make OpenUsage better by sharing anonymous usage analytics":
-            "分享匿名使用数据，帮助改进 OpenUsage",
+        "Help Make OpenUsage Better": "帮助改进 OpenUsage",
 
         "Terminal Helper": "终端工具",
         "Install…": "安装…",
@@ -230,7 +229,9 @@ enum ChineseStrings {
             "该模型的价格不可用。请选择其他模型或“无”。",
 
         "Check for Updates…": "检查更新…",
-        "Update Automatically": "自动更新",
+        "Report an Issue…": "报告问题…",
+        "Check Automatically": "自动检查更新",
+        "Checks hourly and shows a banner when an update is available.": "每小时检查一次，有可用更新时显示横幅。",
         "Beta Updates": "Beta 版更新",
         "Receive pre-release builds before they ship to everyone": "抢先获取正式发布前的预览版本",
 

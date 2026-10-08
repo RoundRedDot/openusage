@@ -107,7 +107,7 @@ struct HeaderView: View {
         Divider()
 
         Link(destination: URL(string: "https://github.com/robinebers/openusage/issues/new/choose")!) {
-            Label("Report an Issue…", systemImage: "ladybug")
+            Label(L10n.t("Report an Issue…"), systemImage: "ladybug")
         }
 
         Button { AboutPanel.present() } label: {
