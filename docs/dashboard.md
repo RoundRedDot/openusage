@@ -8,6 +8,9 @@ A fresh install opens a welcome screen instead of turning providers on by itself
 
 When no provider is on, the dashboard shows **Choose Providers**, which opens Customize.
 
+The welcome screen and empty dashboard follow the language selected in **Settings → Language**,
+including Simplified Chinese; Automatic uses your Mac’s preferred language.
+
 Updates never change the providers you already have on or off — but when an update ships a provider you've never seen, a local check runs once for just that provider and turns it on only if you actually have the tool. See [Which Providers Are On](provider-enablement.md) for the full lifecycle.
 
 Each provider card leads with its **Always Visible** metrics. Any metrics you've moved below the **On Demand** line are tucked away behind the in-card caret — click it to reveal them below the caret, click again to collapse. Open cards stay open across popover closes and app restarts. A provider with neither On Demand metrics nor quick links shows no caret.

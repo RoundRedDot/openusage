@@ -160,7 +160,8 @@ actor PiUsageScanner {
         return out
     }
 
-    /// Bucket entries into local calendar days. Cost is pi's carried total when it recorded one,
+    /// Bucket matching entries (or all entries for the pi card) into local calendar days.
+    /// Cost is pi's carried total when it recorded one,
     /// except free Codex auto-review, else the timestamped tokens priced through `pricing`.
     /// A model that can't be priced and carries no cost
     /// is excluded from the totals and surfaced as the tile's unknown-model warning, matching the log
@@ -169,7 +170,6 @@ actor PiUsageScanner {
         entries: [Entry], cardID: String?, since: Date, pricing: ModelPricing,
         estimateCost: CostEstimator? = nil
     ) -> LogUsageScan {
-        let estimate = estimateCost ?? { model, tokens, _ in pricing.estimatedCostDollars(model: model, tokens: tokens) }
         // Only the pi card mixes providers in one breakdown, so only it needs the provider label; a
         // provider card's rows are that provider's by definition.
         let labelsProvider = cardID == nil
@@ -183,8 +183,15 @@ actor PiUsageScanner {
             }
             let modelName = displayModel ?? ModelUsageEntry.unattributedModelName
 
+            // Price the raw model and billing provider, independently of the destination card's label.
+            let estimate: CostEstimator = estimateCost ?? { model, tokens, timestamp in
+                if entry.cardID == "codex" {
+                    return CodexUsagePricing.estimatedCost(pricing: pricing, model: model, tokens: tokens, at: timestamp)
+                }
+                return pricing.estimatedCostDollars(model: model, tokens: tokens)
+            }
             let cost: Double
-            if cardID == "codex", CodexUsagePricing.isFreeAutoReview(model: modelName, at: entry.timestamp) {
+            if entry.cardID == "codex", CodexUsagePricing.isFreeAutoReview(model: entry.model, at: entry.timestamp) {
                 // A carried estimate must not charge for free ChatGPT auto-review requests.
                 cost = 0
             } else if let carried = entry.carriedCost, carried > 0 {

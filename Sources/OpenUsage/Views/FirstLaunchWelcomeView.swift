@@ -15,9 +15,9 @@ struct FirstLaunchWelcomeView: View {
                     .scaledToFit()
                     .frame(width: 72, height: 72)
                     .accessibilityHidden(true)
-                Text("Welcome to OpenUsage")
+                Text(localized: "Welcome to OpenUsage")
                     .font(.system(size: 27, weight: .semibold))
-                Text("Choose the tools you want to follow. We'll use the sign-ins already on this Mac.")
+                Text(localized: "Choose the tools you want to follow. We'll use the sign-ins already on this Mac.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -29,20 +29,20 @@ struct FirstLaunchWelcomeView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Your Providers").font(.headline)
+                    Text(localized: "Your Providers").font(.headline)
                     Spacer()
                     if setup.isDetecting {
                         ProgressView().controlSize(.small)
-                        Text("Looking for sign-ins…").font(.caption).foregroundStyle(.secondary)
+                        Text(localized: "Looking for sign-ins…").font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Button(setup.showAll ? "Show Detected" : "Show All") { setup.showAll.toggle() }
+                        Button(L10n.t(setup.showAll ? "Show Detected" : "Show All")) { setup.showAll.toggle() }
                             .buttonStyle(.plain).font(.callout).foregroundStyle(.secondary)
                     }
                 }
                 ScrollView {
                     VStack(spacing: 0) {
                         if !setup.isDetecting, setup.visibleChoices.isEmpty {
-                            Text("No sign-ins found yet. Choose Show All to add a provider, or set up later.")
+                            Text(localized: "No sign-ins found yet. Choose Show All to add a provider, or set up later.")
                                 .font(.callout).foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity).padding(24)
                         }
@@ -66,9 +66,9 @@ struct FirstLaunchWelcomeView: View {
                         .foregroundStyle(.secondary)
                         .padding(.top, 2)
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Access to Your Saved Sign-Ins")
+                        Text(localized: "Access to Your Saved Sign-Ins")
                             .font(.callout.weight(.semibold))
-                        Text("Connecting may open macOS permission dialogs for your selected providers. Choose Always Allow to keep background updates working.")
+                        Text(localized: "Connecting may open macOS permission dialogs for your selected providers. Choose Always Allow to keep background updates working.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -93,16 +93,16 @@ struct FirstLaunchWelcomeView: View {
 
     private var actionButtons: some View {
         HStack(spacing: 12) {
-            Button("Skip for Now") { finish() }
+            Button(L10n.t("Skip for Now")) { finish() }
                 .onboardingSecondaryAction()
                 .disabled(setup.isDetecting || setup.isConnecting)
             Spacer()
             if setup.hasAttemptedConnection, setup.hasFailures {
-                Button("Retry") { connect() }
+                Button(L10n.t("Retry")) { connect() }
                     .onboardingSecondaryAction()
                     .disabled(setup.isConnecting)
             }
-            Button(primaryActionTitle) {
+            Button(L10n.t(primaryActionTitle)) {
                 if setup.hasAttemptedConnection { finish() } else { connect() }
             }
             .onboardingPrimaryAction()
@@ -137,7 +137,7 @@ struct FirstLaunchWelcomeView: View {
             ProviderIcon(source: choice.provider.icon).frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 3) {
                 Text(choice.provider.displayName).font(.body.weight(.medium))
-                Text(status(choice)).font(.caption)
+                Text(localized: status(choice)).font(.caption)
                     .foregroundStyle(statusColor(choice.connection))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -152,7 +152,7 @@ struct FirstLaunchWelcomeView: View {
             case .failed:
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.red)
-                    .accessibilityLabel("Needs Attention")
+                    .accessibilityLabel(L10n.t("Needs Attention"))
             }
         }
         .disabled(setup.isConnecting || setup.hasAttemptedConnection)

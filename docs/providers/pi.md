@@ -36,6 +36,11 @@ the ⓘ), not a provider invoice; the token counts are measured. Days are groupe
 zone. A period with no usage reads **No data** rather than a misleading `$0.00 · 0 tokens`, the same as
 every other spend-tracking provider.
 
+Codex subscription requests logged at `$0` use the same dated and long-context pricing rules as
+native Codex logs. Codex auto-review requests from October 6, 2026 at 00:00 UTC cost `$0`, even when
+pi carries a positive estimate; earlier requests keep their carried cost or dated estimate. Measured
+tokens and provider-labeled model rows remain visible. Other providers keep their own recorded costs.
+
 ## How pi usage is counted once
 
 A request pi makes has two plausible homes: pi (the agent that made it) and the provider that billed it

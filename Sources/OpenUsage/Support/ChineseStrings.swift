@@ -14,6 +14,7 @@ import Foundation
 enum ChineseStrings {
     static let table: [String: String] = metrics
         .merging(dashboard) { current, _ in current }
+        .merging(firstLaunch) { current, _ in current }
         .merging(settings) { current, _ in current }
         .merging(options) { current, _ in current }
 
@@ -147,6 +148,32 @@ enum ChineseStrings {
         "Reset claimed. Enjoy!": "重置已领取，尽情使用！",
         "That reset is no longer available": "该重置已不可用",
         "Couldn't reset usage. Please try again.": "重置用量失败，请重试。"
+    ]
+
+    // MARK: - First launch and empty dashboard
+
+    private static let firstLaunch: [String: String] = [
+        "Choose the tools you want to follow. We'll use the sign-ins already on this Mac.": "选择你想关注的工具，将使用这台 Mac 上已有的登录信息。",
+        "Your Providers": "你的服务商",
+        "Looking for sign-ins…": "正在查找登录信息…",
+        "Show Detected": "显示已检测到的",
+        "Show All": "显示全部",
+        "No sign-ins found yet. Choose Show All to add a provider, or set up later.": "尚未找到登录信息。选择“显示全部”来添加服务商，也可以稍后设置。",
+        "Access to Your Saved Sign-Ins": "访问已保存的登录信息",
+        "Connecting may open macOS permission dialogs for your selected providers. Choose Always Allow to keep background updates working.": "连接所选服务商时，macOS 可能会弹出权限对话框。请选择“始终允许”，以便在后台更新。",
+        "Skip for Now": "暂时跳过",
+        "Retry": "重试",
+        "Checking…": "正在检查…",
+        "Open Dashboard": "打开仪表盘",
+        "Connect Selected": "连接所选服务商",
+        "Needs Attention": "需要处理",
+        "Sign-In Detected": "已检测到登录信息",
+        "Set Up or Sign In First": "请先设置或登录",
+        "Enabled": "已启用",
+        "Access wasn't granted. You can retry or skip for now.": "未获得访问权限。你可以重试或暂时跳过。",
+        "Make It Yours": "打造你的仪表盘",
+        "Bring your AI usage, limits, and spend together. Choose what goes on your dashboard.": "集中查看 AI 用量、额度和花费，选择你想在仪表盘上显示的内容。",
+        "Choose Providers": "选择服务商"
     ]
 
     // MARK: - Settings

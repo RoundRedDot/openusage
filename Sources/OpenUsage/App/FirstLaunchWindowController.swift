@@ -12,12 +12,12 @@ final class FirstLaunchWindowController: NSObject, NSWindowDelegate {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 650),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         super.init()
-        window.title = "Welcome to OpenUsage"
+        window.title = L10n.t("Welcome to OpenUsage")
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FirstLaunchWelcomeView(setup: setup, finish: finish))
+        window.contentView = NSHostingView(rootView: LocalizedRoot { FirstLaunchWelcomeView(setup: setup, finish: finish) })
         window.center()
         detectionTask = Task { await setup.detect() }
     }
