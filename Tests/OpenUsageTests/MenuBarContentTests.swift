@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import OpenUsage
 
@@ -6,6 +7,47 @@ import XCTest
 /// when nothing is pinned.
 @MainActor
 final class MenuBarContentTests: XCTestCase {
+    func testWeeklyBarsUseFirstThreeProvidersAndAvailableWeeklyMetric() {
+        let content = MenuBarContentBuilder.buildWeekly(groups: [
+            group("a", percent("a.session", "Session", 10), percent("a.weekly", "Weekly", 40)),
+            group("b", noDataPercent("b.weekly", "Weekly"), percent("b.claudeWeekly", "Claude Weekly", 50)),
+            group("c", percent("c.weekly", "Weekly", 60)),
+            group("d", percent("d.weekly", "Weekly", 70))
+        ], data: { $0.sample })
+
+        XCTAssertEqual(content.bars.map(\.id), ["a.weekly", "b.claudeWeekly", "c.weekly"])
+        XCTAssertEqual(content.groups.map(\.providerID), ["a", "b", "c"])
+        XCTAssertEqual(content.accessibilityText, "A Weekly 40%; B Claude Weekly 50%; C Weekly 60%")
+    }
+
+    func testWeeklyBarsSkipProvidersWithoutAvailableWeeklyQuota() {
+        let content = MenuBarContentBuilder.buildWeekly(groups: [
+            group("a", noDataPercent("a.weekly", "Weekly")),
+            group("b", percent("b.weekly", "Weekly", 50)),
+            group("c", percent("c.session", "Session", 10)),
+            group("d", percent("d.weekly", "Weekly", 70))
+        ], data: { $0.sample })
+
+        XCTAssertEqual(content.bars.map(\.id), ["b.weekly"])
+    }
+
+    func testWeeklyBarsRenderThreeSeparateTracks() throws {
+        let content = MenuBarContentBuilder.buildWeekly(groups: [
+            group("a", percent("a.weekly", "Weekly", 40)),
+            group("b", percent("b.weekly", "Weekly", 50)),
+            group("c", percent("c.weekly", "Weekly", 60))
+        ], data: { $0.sample })
+        let image = try XCTUnwrap(MenuBarStripRenderer.barsImage(for: content))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+        let rows = (0..<bitmap.pixelsHigh).map { y in
+            (0..<bitmap.pixelsWide).contains { x in (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 }
+        }
+        let trackCount = rows.enumerated().filter { index, visible in
+            visible && (index == 0 || !rows[index - 1])
+        }.count
+        XCTAssertEqual(trackCount, 3)
+    }
+
     func testEmptyWhenNoGroups() {
         let content = MenuBarContentBuilder.build(groups: [], data: { $0.sample })
         XCTAssertTrue(content.isEmpty)

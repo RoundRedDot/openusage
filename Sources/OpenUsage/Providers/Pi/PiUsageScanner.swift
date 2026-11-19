@@ -11,8 +11,8 @@ import Foundation
 /// nested `usage.cost.total`), so it has its own parser rather than routing through those scanners.
 ///
 /// An actor holding the versioned incremental parse cache (keyed path + size + mtime) in memory and
-/// Application Support, so refreshes and relaunches parse only changed session files. A single shared
-/// instance is used by every consuming provider, so pi's logs are parsed once rather than once per card.
+/// Application Support, so refreshes and relaunches parse only changed session files. Pi's consumers
+/// share one scanner; OMP supplies its own cache and session directory for the same log format.
 actor PiUsageScanner {
     /// How a card prices a pi request that carries no cost of its own. Providers with their own
     /// request rules (Codex's long-context and priority tiers) supply their estimator; the rest use
@@ -27,9 +27,8 @@ actor PiUsageScanner {
 
     private static let sharedScanner = IncrementalJSONLScanner<Entry>(
         logTag: LogTag.plugin("pi"),
-        // Schema 2: entries keep every pi provider (not just the mapped ones) and carry the raw pi
-        // provider id, so a schema-1 cache would be missing the rows the pi card needs.
-        persistence: JSONLScanCachePersistence(namespace: "pi", schemaVersion: 2)
+        // Schema 3 also accepts whitespace around usage and OMP's model_usage records.
+        persistence: JSONLScanCachePersistence(namespace: "pi", schemaVersion: 3)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -62,7 +61,7 @@ actor PiUsageScanner {
         var carriedCost: Double?
         /// The token buckets, for pricing the fall-through case.
         var tokens: TokenBreakdown
-        /// pi's reported `usage.totalTokens`, shown as the row's token count (matches pi's own footer).
+        /// Reported `usage.totalTokens`, or the usage-bucket sum when no total was recorded.
         var reportedTotalTokens: Int
     }
 
@@ -71,9 +70,10 @@ actor PiUsageScanner {
     /// pi's sessions directory has no log files at all, so a caller with no pi usage folds in nothing.
     func scan(
         cardID: String?, daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing,
-        estimateCost: CostEstimator? = nil
+        estimateCost: CostEstimator? = nil,
+        directory: URL? = nil
     ) async -> LogUsageScan? {
-        let directory = PiPaths.sessionsDirectory(environment: environment, homeDirectory: homeDirectory())
+        let directory = directory ?? PiPaths.sessionsDirectory(environment: environment, homeDirectory: homeDirectory())
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         let cacheIdentity = directory.resolvingSymlinksInPath().path
         let files = JSONLScanning.jsonlFiles(under: directory)
@@ -102,7 +102,7 @@ actor PiUsageScanner {
     /// no OpenUsage card of their own — those are what the pi card is for. Filtering happens in
     /// `aggregate`, not here.
     static func parseFile(_ data: Data) -> [Entry] {
-        let marker = Data(#""usage":{"#.utf8)
+        let marker = Data(#""usage""#.utf8)
         var entries: [Entry] = []
         for line in data.split(separator: UInt8(ascii: "\n")) {
             guard line.range(of: marker) != nil, let entry = parseLine(Data(line)) else { continue }
@@ -113,23 +113,35 @@ actor PiUsageScanner {
 
     static func parseLine(_ data: Data) -> Entry? {
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              object["type"] as? String == "message",
               let timestampRaw = object["timestamp"] as? String,
-              let timestamp = OpenUsageISO8601.date(from: timestampRaw),
-              let message = object["message"] as? [String: Any],
-              message["role"] as? String == "assistant",
+              let timestamp = OpenUsageISO8601.date(from: timestampRaw)
+        else { return nil }
+
+        let message: [String: Any]
+        switch object["type"] as? String {
+        case "message":
+            guard let assistant = object["message"] as? [String: Any],
+                  assistant["role"] as? String == "assistant" else { return nil }
+            message = assistant
+        case "model_usage":
+            // OMP records non-conversation calls (e.g. compaction) at the envelope level.
+            message = object
+        default: return nil
+        }
+        guard
               let providerID = message["provider"] as? String,
               let usage = message["usage"] as? [String: Any]
         else { return nil }
 
         let cacheWrite = Int(ProviderParse.number(usage["cacheWrite"]) ?? 0)
         let cacheWrite1h = Int(ProviderParse.number(usage["cacheWrite1h"]) ?? 0)
+        let orchestration = usage["orchestration"] as? [String: Any] ?? [:]
         let tokens = TokenBreakdown(
-            input: Int(ProviderParse.number(usage["input"]) ?? 0),
+            input: Int(ProviderParse.number(usage["input"]) ?? 0) + Int(ProviderParse.number(orchestration["input"]) ?? 0),
             cacheWrite5m: max(cacheWrite - cacheWrite1h, 0),
             cacheWrite1h: cacheWrite1h,
-            cacheRead: Int(ProviderParse.number(usage["cacheRead"]) ?? 0),
-            output: Int(ProviderParse.number(usage["output"]) ?? 0)
+            cacheRead: Int(ProviderParse.number(usage["cacheRead"]) ?? 0) + Int(ProviderParse.number(orchestration["cacheRead"]) ?? 0),
+            output: Int(ProviderParse.number(usage["output"]) ?? 0) + Int(ProviderParse.number(orchestration["output"]) ?? 0)
         )
 
         let carriedCost = (usage["cost"] as? [String: Any]).flatMap { ProviderParse.number($0["total"]) }
@@ -141,7 +153,7 @@ actor PiUsageScanner {
             model: (message["model"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             carriedCost: carriedCost,
             tokens: tokens,
-            reportedTotalTokens: Int(ProviderParse.number(usage["totalTokens"]) ?? 0)
+            reportedTotalTokens: Int(ProviderParse.number(usage["totalTokens"]) ?? Double(tokens.totalTokens))
         )
     }
 

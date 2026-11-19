@@ -522,4 +522,43 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p7"), kimi)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p7-code"), kimi)
     }
+
+    func testGemini4ModelsPricingAndAliases() throws {
+        let pricing = Self.pricing
+        let expected: [(canonical: String, rates: [Double], aliases: [String])] = [
+            (
+                "gemini-4-hydrogen",
+                [1.5, 1.5, 0.075, 7.5],
+                ["gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-tiered-high", "gemini-4-hydrogen-sonar", "Gemini 4 Hydrogen (High)"]
+            ),
+            (
+                "gemini-4-carbon",
+                [2.0, 2.0, 0.1, 10.0],
+                ["gemini-4-carbon-low", "gemini-4-carbon-high", "Gemini 4 Carbon (Medium)"]
+            ),
+            (
+                "gemini-4-neon",
+                [3.0, 3.0, 0.15, 15.0],
+                ["gemini-4-neon-low", "gemini-4-neon-high", "gemini-4-neon-xhigh", "Gemini 4 Neon (High)"]
+            ),
+            (
+                "gemini-4-argon",
+                [2.0, 2.0, 0.1, 10.0],
+                ["gemini-4-argon-trial", "gemini-4-argon-high", "gemini-4-argon-tiered-high", "Gemini 4 Argon (High)"]
+            )
+        ]
+
+        for entry in expected {
+            let base = try XCTUnwrap(pricing.resolve(model: entry.canonical))
+            XCTAssertEqual(
+                [base.inputPerMillion, base.cacheWritePerMillion, base.cacheReadPerMillion, base.outputPerMillion],
+                entry.rates,
+                entry.canonical
+            )
+            for alias in entry.aliases {
+                XCTAssertEqual(pricing.supplement.canonicalName(for: alias), entry.canonical, alias)
+                XCTAssertEqual(pricing.resolve(model: alias), base, alias)
+            }
+        }
+    }
 }

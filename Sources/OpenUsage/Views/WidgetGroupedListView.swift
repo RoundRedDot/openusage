@@ -20,6 +20,9 @@ struct WidgetGroupedListView: View {
     @State private var frameStore = ReorderFrameStore()
     @State private var activeProviderID: String?
     @State private var activeMetricID: String?
+    @State private var aliasProvider: Provider?
+    @State private var aliasText = ""
+    @State private var isEditingAlias = false
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
     @Environment(\.resetClaims) private var resetClaims
@@ -35,6 +38,17 @@ struct WidgetGroupedListView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
         .animation(Motion.spring, value: layout.displayGroups.map(\.provider.id))
+        .alert(L10n.t("Set Account Alias"), isPresented: $isEditingAlias) {
+            TextField(L10n.t("Account Alias"), text: $aliasText)
+            Button(L10n.t("Save")) {
+                if let aliasProvider {
+                    ProviderAliasStore.set(aliasText, for: aliasProvider.id)
+                }
+            }
+            Button(L10n.t("Cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.t("Leave empty to use the original account name."))
+        }
     }
 
     private func section(_ group: ProviderGroup) -> some View {
@@ -59,13 +73,21 @@ struct WidgetGroupedListView: View {
         .padding(.horizontal, 8)
         .highPriorityGesture(providerDragGesture(for: group))
         .contextMenu {
+            Button(L10n.t("Set Account Alias…")) {
+                aliasProvider = group.provider
+                aliasText = ProviderAliasStore.editValue(for: group.provider)
+                isEditingAlias = true
+            }
+            Divider()
             // Hides the whole provider section (the Customize provider list brings it back). Mirrors
             // the per-metric "Hide" but one level up, so the verb order reads the same on a header as a row.
             Button(L10n.format("Hide %@", group.provider.displayName)) {
                 container.enablement.setEnabled(false, for: group.provider.id)
             }
             Divider()
-            Button(L10n.format("Refresh %@", group.provider.displayName)) {
+            Button(L10n.format("Refresh %@", ProviderAliasStore.displayName(
+                for: group.provider, alias: ProviderAliasStore.alias(for: group.provider.id)
+            ))) {
                 Task { await dataStore.refreshOnUserRequest(providerID: group.provider.id) }
             }
             Button(L10n.t("Customize…")) {
@@ -263,7 +285,9 @@ struct WidgetGroupedListView: View {
         }
         Divider()
         if let provider = layout.provider(id: providerID) {
-            Button(L10n.format("Refresh %@", provider.displayName)) {
+            Button(L10n.format("Refresh %@", ProviderAliasStore.displayName(
+                for: provider, alias: ProviderAliasStore.alias(for: provider.id)
+            ))) {
                 Task { await dataStore.refreshOnUserRequest(providerID: providerID) }
             }
         }

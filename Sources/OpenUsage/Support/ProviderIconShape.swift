@@ -10,9 +10,7 @@ struct IconSource: Hashable {
     }
 }
 
-/// Renders an `IconSource` in monochrome (`Theme.iconGray`): on the glass popover, icon color
-/// reads as noise (WWDC25 — monochrome reduces it), and provider identity comes from the name
-/// beside the mark.
+/// Renders provider marks in their official colors where available.
 struct ProviderIcon: View {
     let source: IconSource
     /// Margin kept around a vector provider mark, forwarded to `ProviderIconShape`. Defaults to the
@@ -22,8 +20,7 @@ struct ProviderIcon: View {
 
     var body: some View {
         if let mark = ProviderMarks.mark(for: source.providerID) {
-            ProviderIconShape(mark: mark, inset: inset)
-                .fill(Theme.iconGray)
+            ProviderBrandIcon(id: source.providerID, mark: mark, inset: inset)
         } else {
             Image(systemName: ProviderMarks.symbolFallback(for: source.providerID))
                 .foregroundStyle(Theme.iconGray)
@@ -41,10 +38,11 @@ struct ProviderIconShape: Shape {
     let mark: ProviderMark
     /// Fraction of the frame kept as margin on every side, so normalized marks have uniform padding.
     var inset: CGFloat = 0.14
+    var normalizationBounds: CGRect?
 
     func path(in rect: CGRect) -> Path {
         let raw = mark.parsedPath
-        let bounds = mark.bounds
+        let bounds = normalizationBounds ?? mark.bounds
         guard bounds.width > 0, bounds.height > 0 else { return raw }
         let target = rect.insetBy(dx: rect.width * inset, dy: rect.height * inset)
         let scale = min(target.width / bounds.width, target.height / bounds.height)
@@ -101,6 +99,7 @@ enum ProviderMarks {
         case "cursor": return "cube"
         case "grok": return "bolt.fill"
         case "ollama": return "cloud"
+        case "omp": return "terminal"
         case "opencode": return "chevron.left.forwardslash.chevron.right"
         case "openrouter": return "point.3.connected.trianglepath.dotted"
         case "pi": return "terminal"

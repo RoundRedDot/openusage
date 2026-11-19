@@ -38,8 +38,10 @@ The Keychain fallback selects the Codex CLI item for `$CODEX_HOME` (or `~/.codex
 
 OpenUsage shows accounts saved by [Codex Swap (`xswap`)](https://github.com/maddada/codex-swap).
 Each account and workspace gets its own card, labeled with its alias and email. Cards and pins stay
-with the same account when you switch the default login. Restart OpenUsage after adding, removing,
-or renaming an account. Custom locations set with `XSWAP_HOME` or `XDG_DATA_HOME` are supported.
+with the same account when you switch the default login. Adding, removing, or renaming an account
+updates the menu bar on the next launch. An explicit refresh does not re-read Codex accounts, and
+the five-minute timer does not either. Custom
+locations set with `XSWAP_HOME` or `XDG_DATA_HOME` are supported.
 Upgrading from a version without Swap support refreshes saved shell settings before account discovery.
 
 - Matching file, Keychain, and Swap logins share a card. If one expires, OpenUsage tries another
@@ -59,7 +61,8 @@ workspace remain separate cards, and the same account signed in through several 
 one card, named by its xswap alias, then its pi label, then its workspace and email. A login held only
 in the Keychain counts as an account too. A single account keeps the plain Codex card, which still
 uses a login found only in a sibling home or in pi, and counts that home's session logs in its
-spend tiles. Restart OpenUsage after adding or removing a login.
+spend tiles. Adding or removing a login updates the menu bar on the next launch. An explicit
+refresh does not re-read Codex accounts, and the five-minute timer does not either.
 
 A card renews the token in its own Codex homes the way the plain Codex card does, so an account you
 only use through a second home keeps working between sessions; the plain card does the same for a

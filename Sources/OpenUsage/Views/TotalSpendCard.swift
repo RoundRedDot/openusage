@@ -240,6 +240,8 @@ struct TotalSpendRingContent: View {
             ForEach(arcs) { arc in
                 RingSectorShape(startFraction: arc.start, endFraction: arc.end)
                     .fill(TotalSpendPalette.color(for: arc.providerID))
+                    .saturation(0.65)
+                    .opacity(0.8)
             }
             centerLabel
         }
@@ -331,6 +333,8 @@ struct TotalSpendRingContent: View {
         HStack(spacing: 7) {
             Circle()
                 .fill(TotalSpendPalette.color(for: slice.provider.id))
+                .saturation(0.65)
+                .opacity(0.8)
                 .frame(width: 8, height: 8)
             Text(slice.provider.displayName)
                 .font(.system(size: density.supportingPointSize))
@@ -376,14 +380,16 @@ struct TotalSpendRingContent: View {
 /// dynamic colors so they read on both appearances without both landing on the same gray.
 enum TotalSpendPalette {
     private static let byProviderID: [String: Color] = [
-        "claude": hex(0xDE7356),                             // Claude terracotta
-        "codex": hex(0x10A37F),                              // OpenAI green (#10A37F)
+        "claude": hex(0xD97757),                             // Anthropic primary accent
+        "codex": dynamic(light: 0x000000, dark: 0xFFFFFF),  // OpenAI monochrome
         "cursor": dynamic(light: 0x13120A, dark: 0xF5F5F7),  // brand black (#13120A), flipped near-white in dark mode
         "grok": dynamic(light: 0x8E8E93, dark: 0x98989D),    // brand black, offset to gray next to Cursor
         "opencode": dynamic(light: 0x6E6E73, dark: 0xAEAEB2),  // OpenCode — grayscale brand, medium gray
         "openrouter": hex(0x6467F2),                         // OpenRouter indigo
         "antigravity": hex(0x4285F4),                        // Google blue
         "copilot": hex(0xA855F7),                            // Copilot purple
+        "omp": hex(0x9B4DFF),                                // Oh My Pi logo gradient midpoint
+        "pi": hex(0x4D9ABF),                                 // Pi logo blue
         "amp": hex(0xF34E3F),
         "factory": dynamic(light: 0x48484A, dark: 0xC7C7CC),
         "kimi": hex(0x0A66FF),
@@ -398,7 +404,7 @@ enum TotalSpendPalette {
     ]
 
     static func color(for providerID: String) -> Color {
-        if let brand = byProviderID[providerID] { return brand }
+        if let brand = byProviderID[ProviderAccountID.family(of: providerID)] { return brand }
         let stableHash = providerID.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
         return fallback[stableHash % fallback.count]
     }

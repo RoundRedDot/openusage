@@ -89,6 +89,22 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    func testUpstreamNoticeAndOhMyPiCopyIsTranslated() {
+        let expected = [
+            "A New OpenUsage Is Coming": "新版 OpenUsage 即将到来",
+            "Read What's Changing": "了解更新变化",
+            "Hide This Notice?": "隐藏此通知？",
+            "Hide Notice": "隐藏通知",
+            "Argon Weekly": "Argon 周额度",
+            "From your Oh My Pi logs (estimated)": "来自你的 Oh My Pi 日志（估算）",
+            "Your reset may still be going through. Check again in a minute.": "重置可能仍在处理中，请稍后再检查。"
+        ]
+        for (english, chinese) in expected {
+            XCTAssertEqual(L10n.t(english, language: .chinese), chinese)
+            XCTAssertEqual(L10n.t(english, language: .english), english)
+        }
+    }
+
     // MARK: - Table hygiene
 
     func testTableNeverMapsAStringToItself() {

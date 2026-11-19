@@ -1,8 +1,7 @@
 import AppKit
 import Observation
 
-/// Owns the menu-bar strip's render loop, split out of `StatusItemController`: render the pinned-metrics
-/// strip and re-render whenever anything it reads changes (pins, live data, meter style, menu-bar style).
+/// Owns the menu-bar strip's render loop, re-rendering when its settings, provider order, or data change.
 ///
 /// `withObservationTracking`'s `onChange` is one-shot, so each render re-arms it. After the first change,
 /// the next render waits briefly so a burst of snapshot writes collapses into one render with the latest
@@ -56,7 +55,7 @@ final class StatusItemImageUpdater {
         }
     }
 
-    /// The pinned-metrics strip in the chosen style, or the app icon when nothing is pinned.
+    /// Render pinned text or weekly quota bars in the chosen style, or the app icon when empty.
     private func renderButtonImage() -> NSImage {
         // Screen-share privacy: while a capture is active (and the setting is on), the strip is
         // replaced with the wordmark so a shared screen never carries usage numbers. Read inside the
@@ -66,11 +65,16 @@ final class StatusItemImageUpdater {
                 ?? MenuBarIcon.image
                 ?? MenuBarStripRenderer.fallbackIcon
         }
-        let content = MenuBarContentBuilder.build(
-            groups: container.layout.pinnedGroups,
-            data: { container.dataStore.data(for: $0) }
-        )
-        return MenuBarStripRenderer.image(for: content, style: container.layout.menuBarStyle)
+        let style = container.layout.menuBarStyle
+        let data = { (descriptor: WidgetDescriptor) in self.container.dataStore.data(for: descriptor) }
+        let content: MenuBarContent
+        switch style {
+        case .bars:
+            content = MenuBarContentBuilder.buildWeekly(groups: container.layout.customizeGroups, data: data)
+        case .text:
+            content = MenuBarContentBuilder.build(groups: container.layout.pinnedGroups, data: data)
+        }
+        return MenuBarStripRenderer.image(for: content, style: style)
             ?? MenuBarIcon.image
             ?? MenuBarStripRenderer.fallbackIcon
     }

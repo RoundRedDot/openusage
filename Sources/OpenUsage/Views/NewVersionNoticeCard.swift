@@ -20,13 +20,13 @@ struct NewVersionNoticeCard: View {
             action: { NSWorkspace.shared.open(Self.issueURL) },
             onDismiss: { isConfirmingDismiss = true }
         )
-        .alert("Hide This Notice?", isPresented: $isConfirmingDismiss) {
-            Button("Hide Notice") {
+        .alert(L10n.t("Hide This Notice?"), isPresented: $isConfirmingDismiss) {
+            Button(L10n.t("Hide Notice")) {
                 withAnimation(Motion.spring) { container.onboarding.dismissNewVersionNotice() }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(L10n.t("Cancel"), role: .cancel) {}
         } message: {
-            Text("The next update removes spend and token tracking for good. To keep them, stay on this version by turning off Check Automatically in Settings → Updates.")
+            Text(localized: "The next update removes spend and token tracking for good. To keep them, stay on this version by turning off Check Automatically in Settings → Updates.")
         }
     }
 }

@@ -20,13 +20,13 @@ final class AntigravityQuotaSummaryMergeTests: XCTestCase {
         XCTAssertNil(AntigravityUsageMapper.parseQuotaSummaries([Data("{}".utf8)]))
     }
 
-    func testMergedSummariesTakeArgonFromTheFirstBodyThatHasIt() {
+    func testMergedSummariesTakeArgonFromTheFirstBodyThatHasIt() throws {
         let argon = { (fraction: Double) in
             #"{"groups":[{"displayName":"Gemini 4 Argon","buckets":[{"bucketId":"gemini-argon-wtu-weekly","window":"weekly","remainingFraction":\#(fraction)}]}]}"#
         }
         let lines = AntigravityUsageMapper.parseQuotaSummaries([Data(argon(0.6).utf8), Data(argon(0.1).utf8)])
         XCTAssertEqual(lines?.map(\.label), ["Argon Weekly"], "two hosts' Argon groups must not read as an ambiguous bucket")
-        XCTAssertEqual(lines?.map { used($0) }, [40])
+        XCTAssertEqual(try XCTUnwrap(used(lines?.first)), 40, accuracy: 0.0001)
     }
 
     func testIsCompleteSummaryNeedsAllFourUsableBuckets() {

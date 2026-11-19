@@ -1,9 +1,8 @@
 import Foundation
 
 /// Resolved, ordered, capped data for the menu-bar strip, built from the pinned metrics and their live
-/// values. The renderers consume this: `groups` drives the Text style (one segment per pinned provider,
-/// each with its 1–2 pinned metrics), `bars` drives the Bars style (the first four bounded metrics — any
-/// with a fill, not just percentages — in order). `isEmpty` means render the plain app icon.
+/// values. The renderers consume this: `groups` drives the Text style, while `bars` drives the Bars
+/// style. The status item builds Bars from the first three enabled providers' weekly quotas.
 struct MenuBarContent: Equatable {
     /// One resolved pinned metric.
     struct Metric: Equatable {
@@ -49,6 +48,19 @@ struct MenuBarContent: Equatable {
 enum MenuBarContentBuilder {
     /// Max bars the compact style renders (matches the original OpenUsage tray).
     static let maxBars = 4
+
+    /// The first three enabled providers each contribute their first available weekly quota.
+    static func buildWeekly(groups: [ProviderMetrics], data: (WidgetDescriptor) -> WidgetData) -> MenuBarContent {
+        let weeklyGroups = groups.prefix(3).compactMap { group -> ProviderMetrics? in
+            guard let descriptor = group.metrics.first(where: { descriptor in
+                guard descriptor.title.localizedCaseInsensitiveContains("weekly") else { return false }
+                let value = data(descriptor)
+                return value.hasData && value.isBounded
+            }) else { return nil }
+            return ProviderMetrics(provider: group.provider, metrics: [descriptor])
+        }
+        return build(groups: weeklyGroups, data: data)
+    }
 
     /// Resolve pinned provider groups into menu-bar content. `groups` is `LayoutStore.pinnedGroups`
     /// (already ordered, disabled providers excluded); `data` resolves each descriptor to its live

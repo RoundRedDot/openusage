@@ -102,12 +102,16 @@ final class LayoutStore {
         didSet { persistence.saveMenuBarStyle(menuBarStyle) }
     }
 
-    let registry: WidgetRegistry
+    private(set) var registry: WidgetRegistry
     private let persistence: LayoutPersistence
-    private let defaultMetricIDs: [String]
-    private let defaultPinnedMetricIDs: [String]
-    private let defaultExpandedMetricIDs: [String]
+    private var defaultMetricIDs: [String]
+    private var defaultPinnedMetricIDs: [String]
+    private var defaultExpandedMetricIDs: [String]
     var defaultExpandedOnEnableIDs: Set<String>
+    /// Defaults already offered on this install, including ones whose provider is currently absent.
+    /// A returning card that appears here has been saved before, so discovery must not turn its
+    /// disabled metrics back on.
+    private var seededDefaultMetricIDs: Set<String>
     let isProviderEnabled: @MainActor (String) -> Bool
 
     init(
@@ -145,12 +149,107 @@ final class LayoutStore {
         expandedMetricIDs = initial.expandedMetricIDs
         expandedProviderIDs = initial.expandedProviderIDs
         defaultExpandedOnEnableIDs = initial.defaultExpandedOnEnableIDs
+        seededDefaultMetricIDs = initial.seededDefaults
         menuBarStyle = initial.menuBarStyle
 
         if initial.shouldPersistExpandOnEnable { persistExpandOnEnable() }
         if initial.shouldPersistExpanded { persistExpanded() }
         if let seededDefaults = initial.seededDefaultsToPersist { persistSeededDefaults(seededDefaults) }
         syncPlacedOrder(persistChanges: initial.shouldPersistPlaced)
+    }
+
+    /// Swaps in the registry an explicit account refresh just built. Surviving cards keep their
+    /// order, enabled metrics, pins, and expanded-section choices. A card already saved here,
+    /// including one that left and came back after a relaunch that did not show it, keeps those
+    /// choices even when every default metric is off and every pin is gone. Only a card this
+    /// install has never saved is inserted after the last card of its family and receives that
+    /// family's default metrics and pins. A removed card leaves the dashboard, but its saved
+    /// choices stay.
+    func adoptDiscoveredProviders(_ registry: WidgetRegistry) {
+        let previousIDs = Set(self.registry.providers.map(\.id))
+        let nextIDs = registry.providers.map(\.id)
+        let added = nextIDs.filter { !previousIDs.contains($0) }
+        self.registry = registry
+        defaultMetricIDs = Self.expandedDefaults(defaultMetricIDs, providerIDs: nextIDs)
+        defaultPinnedMetricIDs = Self.expandedDefaults(defaultPinnedMetricIDs, providerIDs: nextIDs)
+        defaultExpandedMetricIDs = Self.expandedDefaults(defaultExpandedMetricIDs, providerIDs: nextIDs)
+        if let current = customizeProviderID, registry.provider(id: current) == nil {
+            customizeProviderID = nil
+        }
+        guard !added.isEmpty else { return }
+
+        // Absent from the previous registry is not "never seen". Order, pins, an empty placed
+        // list, and the seeded-default record are all saved choices. Zero placed widgets is a
+        // real opt-out, so it must not be treated as a card that still needs its defaults.
+        let introduced = added.filter { !hasSavedLayout($0) }
+        var order = providerOrder
+        for id in added where !order.contains(id) {
+            let family = ProviderAccountID.family(of: id)
+            if let index = order.lastIndex(where: { ProviderAccountID.family(of: $0) == family }) {
+                order.insert(id, at: order.index(after: index))
+            } else {
+                order.append(id)
+            }
+        }
+        if order != providerOrder {
+            providerOrder = order
+            persistProviderOrder()
+        }
+
+        let placedIDs = Set(placed.map(\.descriptorID))
+        var appended: [PlacedWidget] = []
+        var pinnedAdditions: [String] = []
+        var expandedAdditions: [String] = []
+        var queuedAdditions: [String] = []
+        for id in introduced {
+            let owned = registry.descriptors(for: id).map(\.id)
+            let ownedSet = Set(owned)
+            if metricOrderByProvider[id] == nil {
+                metricOrderByProvider[id] = owned
+            }
+            let defaultsOn = defaultMetricIDs.filter { ownedSet.contains($0) && !placedIDs.contains($0) }
+            appended.append(contentsOf: defaultsOn.map { PlacedWidget(descriptorID: $0) })
+            let expandedDefaults = defaultExpandedMetricIDs.filter { ownedSet.contains($0) }
+            expandedAdditions.append(contentsOf: expandedDefaults.filter { defaultsOn.contains($0) })
+            queuedAdditions.append(contentsOf: expandedDefaults.filter { !defaultsOn.contains($0) })
+            pinnedAdditions.append(contentsOf: defaultPinnedMetricIDs.filter { ownedSet.contains($0) })
+        }
+        if !appended.isEmpty { placed.append(contentsOf: appended) }
+        if !introduced.isEmpty { persistMetricOrder() }
+        for id in pinnedAdditions where canPin(id) {
+            pinnedMetricIDs.insert(id)
+        }
+        if !pinnedAdditions.isEmpty { persistPins() }
+        if !expandedAdditions.isEmpty {
+            expandedMetricIDs.formUnion(expandedAdditions)
+            persistExpanded()
+        }
+        if !queuedAdditions.isEmpty {
+            defaultExpandedOnEnableIDs.formUnion(queuedAdditions)
+            persistExpandOnEnable()
+        }
+        syncPlacedOrder()
+    }
+
+    /// True when this install already has a choice for the provider, including a choice that was
+    /// kept dormant while the provider was missing from the registry.
+    private func hasSavedLayout(_ providerID: String) -> Bool {
+        if providerOrder.contains(providerID) || metricOrderByProvider[providerID] != nil {
+            return true
+        }
+        if expandedProviderIDs.contains(providerID) { return true }
+        let owns: (String) -> Bool = { LayoutOrdering.providerID(forMetricID: $0) == providerID }
+        if placed.contains(where: { owns($0.descriptorID) }) { return true }
+        if pinnedMetricIDs.contains(where: owns) { return true }
+        if expandedMetricIDs.contains(where: owns) { return true }
+        if defaultExpandedOnEnableIDs.contains(where: owns) { return true }
+        if seededDefaultMetricIDs.contains(where: owns) { return true }
+        return false
+    }
+
+    private static func expandedDefaults(_ ids: [String], providerIDs: [String]) -> [String] {
+        var seen = Set<String>()
+        return DefaultLayout.expandingAccounts(ids, providerIDs: providerIDs).filter { seen.insert($0).inserted }
     }
 
     func isProviderExpanded(_ providerID: String) -> Bool {
@@ -395,7 +494,9 @@ final class LayoutStore {
         persistExpandOnEnable()
         expandedProviderIDs = []
         persistExpandedProviders()
-        persistSeededDefaults(Set(LayoutOrdering.knownMetricIDs(defaultMetricIDs, registry: registry)))
+        let seeded = Set(LayoutOrdering.knownMetricIDs(defaultMetricIDs, registry: registry))
+        seededDefaultMetricIDs = seeded
+        persistSeededDefaults(seeded)
         persist()
     }
 

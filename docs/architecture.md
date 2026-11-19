@@ -25,10 +25,20 @@ starts the local HTTP API. Everything else receives what it needs from here rath
 globals, which keeps the pieces testable in isolation.
 
 The `openusage` executable imports the same module. A normal invocation reads `ProviderSnapshotCache`
-and exits; `--force` constructs the canonical `ProviderCatalog` and calls `WidgetDataStore`'s forced
-refresh path before reading. Providers annotate the scalar resources they export through the stable
-limits contract; the CLI and `/v1/limits` share one serializer over those same normalized snapshots.
-It never launches the GUI or duplicates provider, auth, pricing, or mapping logic.
+and exits. `--force` first POSTs to the running app's loopback API. Only a refused connection
+constructs `ProviderCatalog` and calls `WidgetDataStore`'s forced refresh path. A timeout, an
+unreadable response, or an error status from an app that was reached ends the command instead.
+Providers annotate the scalar resources they export through the stable limits contract; the CLI and
+`/v1/limits` share one serializer over those same normalized snapshots. It never launches the GUI or
+duplicates provider, auth, pricing, or mapping logic.
+
+An explicit refresh in the running app re-reads Claude accounts and updates the existing layout,
+enablement, and data stores. A card that is absent at launch keeps its saved layout and stays off
+the dashboard until a later explicit refresh brings the account back. Codex account discovery stays on the launch pass, and the Codex provider
+instance is left in place. Cards whose binding did not change keep their provider instances. A
+refresh that started against the previous account cannot publish after the card's identity moves.
+The five-minute loop does not re-read accounts. `POST /v1/refresh` fetches its targets together, so
+one slow provider does not push the others past the CLI's wait.
 
 ## The provider pipeline
 

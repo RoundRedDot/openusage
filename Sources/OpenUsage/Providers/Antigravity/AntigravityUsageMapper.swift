@@ -187,6 +187,7 @@ enum AntigravityUsageMapper {
         }
         return models.compactMap { key, model -> AntigravityModelConfig? in
             if model.isInternal == true { return nil }
+            if key.hasSuffix("-disabled"), model.quotaInfo == nil { return nil }
             guard let label = (model.displayName?.nilIfEmpty) ?? (model.label?.nilIfEmpty) else { return nil }
             return config(label: label, modelID: model.model?.nilIfEmpty ?? key, quota: model.quotaInfo)
         }
@@ -274,7 +275,7 @@ enum AntigravityUsageMapper {
         let used = (1 - clamped) * 100
         return .progress(
             label: pool,
-            used: used.rounded(), // keep whole percents so a fresh window reads 0 and "Not started" works
+            used: used,
             limit: 100,
             format: .percent,
             resetsAt: resetTime,

@@ -28,6 +28,7 @@ struct ProviderSectionHeader: View {
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage private var alias: String
     /// Party easter egg: pulse the provider mark. Off by default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
     @State private var isHovered = false
@@ -41,6 +42,7 @@ struct ProviderSectionHeader: View {
         onCopyScreenshot: (() -> Bool)? = nil
     ) {
         self.provider = provider
+        self._alias = AppStorage(wrappedValue: "", ProviderAliasStore.key(for: provider.id))
         self.plan = plan
         self.warning = warning
         self.refreshing = refreshing
@@ -60,11 +62,12 @@ struct ProviderSectionHeader: View {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 // Give the plan first choice of the available width, while still allowing an oversized
                 // plan to truncate. Account names and the lower-priority stale tag yield space first.
-                Text(provider.displayName)
+                Text(ProviderAliasStore.displayName(for: provider, alias: alias))
                     .font(.system(size: density.headerPointSize, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .layoutPriority(1)
+                    .hoverTooltip(provider.displayName)
                 if let plan {
                     ProviderPlanBadge(plan: plan)
                         .layoutPriority(2)

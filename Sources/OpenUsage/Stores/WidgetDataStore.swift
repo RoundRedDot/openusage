@@ -12,8 +12,8 @@ struct StalenessHint: Equatable {
 @MainActor
 @Observable
 final class WidgetDataStore {
-    private let registry: WidgetRegistry
-    private let providersByID: [String: ProviderRuntime]
+    private var registry: WidgetRegistry
+    private var providersByID: [String: ProviderRuntime]
     private let cache: ProviderSnapshotCache
     private let defaults: UserDefaults
     /// Whether a provider is currently enabled. Injected so the store consults the single
@@ -33,11 +33,21 @@ final class WidgetDataStore {
     /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
-    /// Card id → the account identity currently signed in there, resolved once at launch by
-    /// `ProviderAccountAssembly`. Drives the snapshot cache's account stamp: writes record the
-    /// producer, and launch loads only paint an entry whose stamp matches. A card absent here has an
-    /// unresolved identity this launch (or isn't account-aware) — its cache behaves as it always did.
-    private let providerIdentityKeys: [String: String]
+    /// Card id → the account identity currently signed in there. Launch resolves it, and an explicit
+    /// refresh replaces it when the discovered accounts change. Drives the snapshot cache's account
+    /// stamp: writes record the producer, and loads only paint an entry whose stamp matches. A card
+    /// absent here has an unresolved identity (or isn't account-aware) — its cache behaves as before.
+    private var providerIdentityKeys: [String: String]
+    /// Bumped when the card's provider instance or account identity is replaced. A refresh captures
+    /// the value before its fetch and drops the result when the value moved, so an in-flight response
+    /// cannot publish under the account that now owns the card.
+    @ObservationIgnored private var accountEpoch: [String: UInt64] = [:]
+    /// The epoch that currently owns the in-flight slot. A newer refresh may start after the epoch
+    /// bumps; the older refresh's cleanup must not clear the newer slot.
+    @ObservationIgnored private var inflightEpoch: [String: UInt64] = [:]
+    /// Force refreshes waiting on the owner of the same account generation. Resumed with that
+    /// owner's outcome after it publishes, or with `.skipped` when the generation moved.
+    @ObservationIgnored private var inflightWaiters: [String: [InflightWaiter]] = [:]
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
     /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
@@ -98,6 +108,10 @@ final class WidgetDataStore {
     /// bulk — so the recorder can roll daily usage and error counts up into one event per provider per
     /// day. `nil` (and so a no-op) in tests and previews. Not observable UI state.
     @ObservationIgnored var onRefreshOutcome: (@MainActor (String, RefreshOutcome, ErrorCategory?, Bool) -> Void)?
+    /// Runs before a user-requested refresh (footer, ⌘R, or a card's own refresh). The menu-bar app
+    /// uses it to rediscover accounts. Returns provider ids whose binding changed and still need a
+    /// forced fetch when the request named a single card. `nil` in tests and the one-shot CLI.
+    @ObservationIgnored var prepareUserRefresh: (@MainActor () async -> Set<String>)?
     /// Wired by `ICloudUsageSyncStore`; debounced there so a concurrent provider batch produces one file.
     @ObservationIgnored var onLocalHistoryChanged: (@MainActor () -> Void)?
     @ObservationIgnored private var peerHistoryDocuments: [UsageHistoryDocument] = []
@@ -239,14 +253,89 @@ final class WidgetDataStore {
         AppLog.info(.refresh, "batch end (\(durationMs)ms, \(refreshed) ok / \(failed) failed / \(cached) cached / \(backedOff) backed off)")
     }
 
+    /// Force-fetches the local API's targets together. The CLI gives up at 150s and each provider
+    /// deadline is 120s, so awaiting these one after another can time out a healthy multi-provider
+    /// request. The overlap matches `refreshAll`: one MainActor task per id, with snapshot writes
+    /// coalesced until the batch finishes. `requireEnabled` is decided per id before the tasks start.
+    func refreshIDs(
+        _ providerIDs: [String],
+        force: Bool,
+        requireEnabled: (String) -> Bool
+    ) async -> [RefreshOutcome] {
+        snapshotRebuildDeferrals += 1
+        let tasks = providerIDs.map { providerID in
+            let requireEnabled = requireEnabled(providerID)
+            return Task {
+                await self.refresh(
+                    providerID: providerID,
+                    force: force,
+                    notifyHistoryChange: false,
+                    requireEnabled: requireEnabled
+                )
+            }
+        }
+        var outcomes: [RefreshOutcome] = []
+        outcomes.reserveCapacity(tasks.count)
+        for task in tasks {
+            outcomes.append(await task.value)
+        }
+        snapshotRebuildDeferrals -= 1
+        if snapshotRebuildDeferrals == 0 {
+            coalescedRebuildTask?.cancel()
+            coalescedRebuildTask = nil
+            flushPendingSnapshotWork()
+        }
+        if outcomes.contains(.refreshed) { onLocalHistoryChanged?() }
+        return outcomes
+    }
+
     /// The user's own Refresh. It's the only refresh that lets a login they denied ask again.
+    /// Account discovery runs first, so a Claude login added, removed, or switched since launch
+    /// reaches this process before the fetch.
     func refreshOnUserRequest(providerID: String? = nil) async {
+        let changed = await prepareUserRefresh?() ?? []
         KeychainAccessGuard.forgetDenials()
         if let providerID {
             await refresh(providerID: providerID, force: true)
+            for id in changed.sorted() where id != providerID {
+                await refresh(providerID: id, force: true)
+            }
         } else {
             await refreshAll(force: true)
         }
+    }
+
+    /// Installs providers and account stamps after an explicit rediscovery. Instances the caller
+    /// kept are left in place. `invalidateIDs` makes an in-flight fetch for that card drop its
+    /// result. `dropSnapshotIDs` removes cached usage that belongs to a different account.
+    func installAccountRuntimes(
+        registry: WidgetRegistry,
+        providers: [ProviderRuntime],
+        identityKeys: [String: String],
+        invalidateIDs: Set<String>,
+        dropSnapshotIDs: Set<String>
+    ) {
+        self.registry = registry
+        self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
+        self.providerIdentityKeys = identityKeys
+        let live = Set(providers.map(\.provider.id))
+        for id in invalidateIDs {
+            accountEpoch[id, default: 0] &+= 1
+            guard !live.contains(id) else { continue }
+            inflightEpoch[id] = nil
+            refreshingProviderIDs.remove(id)
+        }
+        var dropped = false
+        for id in dropSnapshotIDs {
+            if localSnapshots.removeValue(forKey: id) != nil { dropped = true }
+            if providerErrors.removeValue(forKey: id) != nil { dropped = true }
+        }
+        for id in Array(localSnapshots.keys) where !live.contains(id) {
+            localSnapshots.removeValue(forKey: id)
+            providerErrors.removeValue(forKey: id)
+            dropped = true
+        }
+        if dropped { rebuildRenderedSnapshots() }
     }
 
     /// Evaluate every visible, enabled metric for a quota pace milestone and post a notification for any
@@ -292,15 +381,21 @@ final class WidgetDataStore {
     /// from real outcomes rather than cumulative error state. `.backedOff` is a probe deliberately skipped
     /// because the provider failed within the last `failureRetryBackoff` — distinct from `.skipped`
     /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
-    enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
+    enum RefreshOutcome: Sendable, Equatable { case refreshed, failed, cacheHit, skipped, backedOff }
+
+    private struct InflightWaiter {
+        var epoch: UInt64
+        var continuation: CheckedContinuation<RefreshOutcome, Never>
+    }
 
     @discardableResult
     func refresh(
         providerID: String,
         force: Bool = false,
-        notifyHistoryChange: Bool = true
+        notifyHistoryChange: Bool = true,
+        requireEnabled: Bool = true
     ) async -> RefreshOutcome {
-        guard isProviderEnabled(providerID) else { return .skipped }
+        guard !requireEnabled || isProviderEnabled(providerID) else { return .skipped }
         // A TTL-fresh entry that provably belongs to another account (swap since it was written) must
         // not short-circuit the refresh — under persisted freshness (the one-shot CLI) it would copy
         // the previous account's snapshot back in. Treat it as a miss so the fetch overwrites it.
@@ -328,14 +423,27 @@ final class WidgetDataStore {
         }
 
         guard let provider = providersByID[providerID] else { return .skipped }
-        // Skip if an in-flight refresh already owns this provider (e.g. the background timer racing the
-        // first popover open), so we never fire duplicate network calls for the same provider.
-        guard !refreshingProviderIDs.contains(providerID) else {
-            AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
-            return .skipped
+        // One fetch owns an account generation. A non-force caller (the periodic loop) leaves that
+        // fetch alone. A force caller joins it and takes the owner's outcome, so it cannot report
+        // success from the cache the owner has not replaced yet. A rediscovery bumps the generation
+        // and may start a new fetch; the old one drops its result instead of publishing it onto the
+        // replacement account.
+        let epoch = accountEpoch[providerID, default: 0]
+        if inflightEpoch[providerID] == epoch {
+            if !force {
+                AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
+                return .skipped
+            }
+            AppLog.debug(.refresh, "join in-flight \(providerID)")
+            return await waitForInflight(providerID: providerID, epoch: epoch)
         }
+        inflightEpoch[providerID] = epoch
         refreshingProviderIDs.insert(providerID)
-        defer { refreshingProviderIDs.remove(providerID) }
+        // Left as `.skipped` unless a path below publishes or records a failure. Waiters then cannot
+        // be told the fetch succeeded.
+        var outcome: RefreshOutcome = .skipped
+        defer { finishInflight(providerID: providerID, epoch: epoch, outcome: outcome) }
+        let stillCurrent = { self.accountEpoch[providerID, default: 0] == epoch }
         let start = monotonicNow()
         // A provider that never returns would otherwise hold the in-flight entry — and the spinner —
         // forever. Past the deadline, stop waiting and treat it as any other failed refresh.
@@ -344,17 +452,32 @@ final class WidgetDataStore {
             force: force,
             timeout: providerRefreshTimeout
         ) else {
+            guard stillCurrent() else {
+                AppLog.info(.refresh, "dropped stale \(providerID) refresh")
+                outcome = .skipped
+                return outcome
+            }
             providerErrors[providerID] = "Refresh timed out after \(Int(providerRefreshTimeout))s"
             failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
             AppLog.warn(.refresh, "\(providerID) timed out after \(Int(providerRefreshTimeout))s")
             onRefreshOutcome?(providerID, .failed, .network, force)
-            return .failed
+            outcome = .failed
+            return outcome
         }
         // A canceled refresh may still return if a provider's underlying work is non-throwing. Never
         // publish that potentially partial snapshot; keep the last-good state exactly as it was.
         guard !Task.isCancelled else {
             AppLog.debug(.refresh, "cancelled \(providerID) refresh; keeping last-good snapshot")
-            return .skipped
+            outcome = .skipped
+            return outcome
+        }
+        // The account bound to this card changed while the fetch ran. The provider instance that
+        // produced this snapshot no longer owns the card, so neither the dashboard nor the cache
+        // may take it.
+        guard stillCurrent() else {
+            AppLog.info(.refresh, "dropped stale \(providerID) refresh")
+            outcome = .skipped
+            return outcome
         }
         let durationMs = durationMilliseconds(since: start)
         if TimeInterval(durationMs) >= slowProviderRefreshThreshold * 1000 {
@@ -371,7 +494,8 @@ final class WidgetDataStore {
             failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
             AppLog.warn(.refresh, "\(providerID) failed: \(message)")
             onRefreshOutcome?(providerID, .failed, snapshot.errorCategory, force)
-            return .failed
+            outcome = .failed
+            return outcome
         }
         if providerErrors[providerID] != nil {
             providerErrors[providerID] = nil
@@ -408,7 +532,54 @@ final class WidgetDataStore {
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
         onRefreshOutcome?(providerID, .refreshed, nil, force)
-        return .refreshed
+        outcome = .refreshed
+        return outcome
+    }
+
+    /// How many force refreshes are waiting on this card's current fetch. Tests use it to prove a
+    /// joiner suspended before the owner is released.
+    func inflightJoinCount(for providerID: String) -> Int {
+        inflightWaiters[providerID]?.count ?? 0
+    }
+
+    private func waitForInflight(providerID: String, epoch: UInt64) async -> RefreshOutcome {
+        await withCheckedContinuation { continuation in
+            // Re-checked here, still synchronously on the MainActor, so the owner cannot finish
+            // between the caller's look at `inflightEpoch` and this registration.
+            guard self.inflightEpoch[providerID] == epoch,
+                  self.accountEpoch[providerID, default: 0] == epoch
+            else {
+                continuation.resume(returning: .skipped)
+                return
+            }
+            self.inflightWaiters[providerID, default: []].append(
+                InflightWaiter(epoch: epoch, continuation: continuation)
+            )
+        }
+    }
+
+    private func finishInflight(providerID: String, epoch: UInt64, outcome: RefreshOutcome) {
+        let ownsSlot = inflightEpoch[providerID] == epoch
+        if ownsSlot {
+            inflightEpoch[providerID] = nil
+            refreshingProviderIDs.remove(providerID)
+        }
+        let waiters = inflightWaiters.removeValue(forKey: providerID) ?? []
+        guard !waiters.isEmpty else { return }
+        let deliver: RefreshOutcome = ownsSlot && accountEpoch[providerID, default: 0] == epoch
+            ? outcome
+            : .skipped
+        var kept: [InflightWaiter] = []
+        for waiter in waiters {
+            if waiter.epoch == epoch {
+                waiter.continuation.resume(returning: deliver)
+            } else {
+                kept.append(waiter)
+            }
+        }
+        if !kept.isEmpty {
+            inflightWaiters[providerID] = kept
+        }
     }
 
     private func durationMilliseconds(since start: TimeInterval) -> Int {

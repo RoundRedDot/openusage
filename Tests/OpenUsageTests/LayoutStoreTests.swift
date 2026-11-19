@@ -1013,11 +1013,17 @@ final class LayoutStoreTests: XCTestCase {
     func testInvalidPersistedExpandedIDsAreDropped() {
         let defaults = makeDefaults("InvalidExpand")
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
-        defaults.set(["claude.session", "missing.metric"], forKey: "layout.expandedMetrics")
+        defaults.set(
+            ["claude.session", "claude.removed", "missing.metric"],
+            forKey: "layout.expandedMetrics"
+        )
 
         let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
         XCTAssertTrue(store.expandedMetricIDs.contains("claude.session"))
-        XCTAssertFalse(store.expandedMetricIDs.contains("missing.metric"))
+        XCTAssertFalse(store.expandedMetricIDs.contains("claude.removed"))
+        XCTAssertTrue(store.expandedMetricIDs.contains("missing.metric"))
+        XCTAssertFalse(store.orderedProviderIDs().contains("missing"))
+        XCTAssertFalse(store.displayGroups.contains { $0.provider.id == "missing" })
     }
 
     func testDisplayGroupsPartitionEnabledMetrics() {
@@ -1069,13 +1075,16 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout").isProviderExpanded("codex"))
     }
 
-    func testInvalidPersistedExpandedProviderIDsAreDropped() {
+    func testAbsentProviderExpandedStateStaysDormant() {
         let defaults = makeDefaults("InvalidProviderExpanded")
         defaults.set(["codex", "missing"], forKey: "layout.expandedProviders")
 
         let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
         XCTAssertTrue(store.isProviderExpanded("codex"))
-        XCTAssertFalse(store.isProviderExpanded("missing"))
+        XCTAssertTrue(store.isProviderExpanded("missing"))
+        XCTAssertFalse(store.orderedProviderIDs().contains("missing"))
+        XCTAssertFalse(store.displayGroups.contains { $0.provider.id == "missing" })
+        XCTAssertNil(store.customizeDetail(for: "missing"))
     }
 
     func testResetClearsProviderExpandedState() {

@@ -25,18 +25,50 @@ public enum UsageReaderError: LocalizedError, Sendable {
 public struct UsageReader {
     private let defaults: UserDefaults
     private let providersOverride: [ProviderRuntime]?
+    private let runningAppRefresh: (@MainActor (String?) async -> RunningAppRefreshResult)?
 
     public init(userDefaults: UserDefaults) {
         self.defaults = userDefaults
         self.providersOverride = nil
+        self.runningAppRefresh = RunningAppRefreshClient.request
     }
 
-    init(userDefaults: UserDefaults, providers: [ProviderRuntime]) {
+    init(
+        userDefaults: UserDefaults,
+        providers: [ProviderRuntime],
+        runningAppRefresh: (@MainActor (String?) async -> RunningAppRefreshResult)? = nil
+    ) {
         self.defaults = userDefaults
         self.providersOverride = providers
+        self.runningAppRefresh = runningAppRefresh
+    }
+
+    init(
+        userDefaults: UserDefaults,
+        runningAppRefresh: @escaping @MainActor (String?) async -> RunningAppRefreshResult
+    ) {
+        self.defaults = userDefaults
+        self.providersOverride = nil
+        self.runningAppRefresh = runningAppRefresh
     }
 
     public func read(providerID requestedProviderID: String? = nil, force: Bool = false) async throws -> UsageReadResult {
+        // `--force` while the menu-bar app is up must be that app's refresh. Doing it here as well
+        // would rediscover accounts in a second process and could publish a different card set than
+        // the one on screen. Only a refused connection falls through. A timeout, an unreadable
+        // response, or an error status is this command's failure.
+        if force, providersOverride == nil, let runningAppRefresh {
+            switch await runningAppRefresh(requestedProviderID) {
+            case .handled(let result):
+                return result
+            case .unknownProvider(let providerID):
+                throw UsageReaderError.unknownProvider(providerID)
+            case .failed(let message):
+                throw UsageReaderError.refreshFailed(message)
+            case .unavailable:
+                break
+            }
+        }
         // The launch account pass (see `ProviderAccountAssembly`): resolves each family's default
         // account so cached snapshots are guarded — and refreshed ones stamped — with the correct
         // account. Skipped when a test injects its own providers — they have no real homes to read.

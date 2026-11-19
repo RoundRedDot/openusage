@@ -52,7 +52,7 @@ struct ProviderAccountRecord: Codable, Equatable, Sendable {
     var identityKey: String
     var label: String?
     var sources: [ProviderAccountSource]
-    /// Set by a future "Remove Account…". A tombstoned account is never resurrected by rescans.
+    /// Removed accounts stay hidden unless explicitly restored as the selected Claude Swap login.
     var removedTombstone: Bool = false
 }
 
@@ -87,6 +87,16 @@ final class ProviderAccountsStore {
         var identityKey: String
         var label: String?
         var sources: [ProviderAccountSource]
+    }
+
+    /// Restore a selected Claude Swap login once, including its provider toggle.
+    func restoreSelectedClaudeSwap(_ identityKey: String) {
+        guard let index = records.firstIndex(where: {
+            $0.family == "claude" && $0.identityKey == identityKey && $0.removedTombstone
+        }) else { return }
+        records[index].removedTombstone = false
+        persist()
+        ProviderEnablementStore(defaults: defaults).setEnabled(true, for: records[index].id)
     }
 
     /// Merges this launch's observations into the persisted set. Phase 1 semantics: an observation

@@ -118,11 +118,12 @@ final class MenuBarPinTests: XCTestCase {
 
     func testInvalidPinnedIDsDroppedOnLoad() {
         let defaults = makeDefaults("invalid")
-        defaults.set(["a.m1", "ghost.metric"], forKey: "layout.menuBarPins")
+        defaults.set(["a.m1", "a.obsolete", "ghost.metric"], forKey: "layout.menuBarPins")
         let store = LayoutStore(registry: makeRegistry(), defaults: defaults, storageKey: "layout")
 
         XCTAssertTrue(store.isPinned("a.m1"))
-        XCTAssertFalse(store.isPinned("ghost.metric"))
+        XCTAssertFalse(store.isPinned("a.obsolete"))
+        XCTAssertTrue(store.isPinned("ghost.metric"))
     }
 
     // MARK: - Fixtures

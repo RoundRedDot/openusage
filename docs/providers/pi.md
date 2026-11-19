@@ -29,12 +29,18 @@ Use pi as usual. OpenUsage reads its session logs under `~/.pi/agent/sessions/`,
 overrides: `$PI_CODING_AGENT_SESSION_DIR` wins, then `$PI_CODING_AGENT_DIR/sessions`. There is no login,
 no API key, and nothing to paste. No log data leaves your Mac.
 
+[Oh My Pi](oh-my-pi.md) has a separate card reading `~/.omp/agent/sessions/`; its usage is not
+included on the Pi card.
+
 Pi records what each request cost in its own logs, so those dollars come straight from pi. When pi logs
 a request at `$0` — subscription usage it doesn't price — the tokens are priced through the shared
 [model pricing](../pricing.md) instead. Either way the dollars are an estimate at published rates (that's
 the ⓘ), not a provider invoice; the token counts are measured. Days are grouped in your Mac's local time
 zone. A period with no usage reads **No data** rather than a misleading `$0.00 · 0 tokens`, the same as
 every other spend-tracking provider.
+
+When a log omits the total token count, OpenUsage adds its usage buckets, including any
+orchestration tokens. A recorded total remains authoritative.
 
 Codex subscription requests logged at `$0` use the same dated and long-context pricing rules as
 native Codex logs. Codex auto-review requests from October 6, 2026 at 00:00 UTC cost `$0`, even when

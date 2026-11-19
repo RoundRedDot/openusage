@@ -39,7 +39,7 @@ final class AntigravityProviderTests: XCTestCase {
 
     // MARK: - Mapper: pooling
 
-    func testBuildLinesPoolsAndOrders() {
+    func testBuildLinesPoolsAndOrders() throws {
         let configs = [
             AntigravityModelConfig(label: "Gemini 3 Pro (High)", modelID: "a", remainingFraction: 0.8, resetTime: nil),
             AntigravityModelConfig(label: "Gemini 3 Pro (Low)", modelID: "b", remainingFraction: 0.5, resetTime: nil),
@@ -52,11 +52,11 @@ final class AntigravityProviderTests: XCTestCase {
         // Pro and Flash share one pool since Antigravity's 2026-05-19 quota merge, so all Gemini
         // models collapse into a single "Session" meter (worst fraction wins across the whole pool).
         XCTAssertEqual(lines.map(\.label), ["Session", "Claude"])
-        XCTAssertEqual(used(lines[0]), 50)  // worst Gemini fraction (Pro Low 0.5) -> 50% used
-        XCTAssertEqual(used(lines[1]), 70)  // worst non-Gemini (Claude 0.3) -> 70% used
+        XCTAssertEqual(try XCTUnwrap(used(lines[0])), 50, accuracy: 0.0001)  // worst Gemini fraction (Pro Low 0.5) -> 50% used
+        XCTAssertEqual(try XCTUnwrap(used(lines[1])), 70, accuracy: 0.0001)  // worst non-Gemini (Claude 0.3) -> 70% used
     }
 
-    func testBuildLinesDedupKeepsWorstFractionAndItsReset() {
+    func testBuildLinesDedupKeepsWorstFractionAndItsReset() throws {
         let earlier = Date(timeIntervalSince1970: 1_000)
         let later = Date(timeIntervalSince1970: 2_000)
         let configs = [
@@ -65,11 +65,11 @@ final class AntigravityProviderTests: XCTestCase {
         ]
         let lines = AntigravityUsageMapper.buildLines(configs)
         XCTAssertEqual(lines.count, 1)
-        XCTAssertEqual(used(lines[0]), 80)              // worst fraction 0.2
+        XCTAssertEqual(try XCTUnwrap(used(lines[0])), 80, accuracy: 0.0001)  // worst fraction 0.2
         XCTAssertEqual(resetsAt(lines[0]), earlier)     // reset of the kept (worst) entry
     }
 
-    func testBuildLinesDropsBlacklistedAndEmptyLabels() {
+    func testBuildLinesDropsBlacklistedAndEmptyLabels() throws {
         let configs = [
             AntigravityModelConfig(label: "Gemini 2.5 Pro", modelID: "MODEL_GOOGLE_GEMINI_2_5_PRO", remainingFraction: 1, resetTime: nil),
             AntigravityModelConfig(label: "   ", modelID: "x", remainingFraction: 1, resetTime: nil),
@@ -77,7 +77,7 @@ final class AntigravityProviderTests: XCTestCase {
         ]
         let lines = AntigravityUsageMapper.buildLines(configs)
         XCTAssertEqual(lines.map(\.label), ["Session"])
-        XCTAssertEqual(used(lines[0]), 40)
+        XCTAssertEqual(try XCTUnwrap(used(lines[0])), 40, accuracy: 0.0001)
     }
 
     func testBuildLinesClampsOutOfRangeFractions() {
@@ -167,6 +167,21 @@ final class AntigravityProviderTests: XCTestCase {
         """
         let lines = AntigravityUsageMapper.buildLines(AntigravityUsageMapper.parseCloudCodeModels(Data(json.utf8)))
         XCTAssertEqual(used(lines.first), 100)  // no quotaInfo -> fully used
+    }
+
+    func testParseCloudCodeModelsHandlesGemini4HydrogenCarbonNeonAndExcludesArgonAndDisabledPlaceholder() throws {
+        let json = """
+        {"models":{
+          "gemini-4-hydrogen-high":{"model":"MODEL_H","displayName":"Gemini 4 Hydrogen (High)","quotaInfo":{"remainingFraction":0.7,"resetTime":"2026-11-19T14:25:08Z"}},
+          "gemini-4-neon-high":{"model":"MODEL_N","displayName":"Gemini 4 Neon (High)","quotaInfo":{"remainingFraction":0.7,"resetTime":"2026-11-19T14:25:08Z"}},
+          "gemini-4-carbon-disabled":{"model":"MODEL_C","displayName":"Gemini 4 Carbon"},
+          "gemini-4-argon-high":{"model":"MODEL_A","displayName":"Gemini 4 Argon (High)","quotaInfo":{"remainingFraction":0.2,"resetTime":"2026-11-26T09:44:07Z"}}
+        }}
+        """
+        let lines = AntigravityUsageMapper.buildLines(AntigravityUsageMapper.parseCloudCodeModels(Data(json.utf8)))
+        XCTAssertEqual(lines.map(\.label), ["Session"])
+        // Hydrogen/Neon 0.7 -> 30% used; disabled Carbon (no quotaInfo) and separate Argon (0.2) do not poison Session.
+        XCTAssertEqual(try XCTUnwrap(used(lines.first)), 30, accuracy: 0.0001)
     }
 
     func testParseLoadCodeAssistPlan() {
@@ -324,7 +339,7 @@ final class AntigravityProviderTests: XCTestCase {
     }
 
     @MainActor
-    func testRefreshUsesCloudCodeWhenNoLanguageServer() async {
+    func testRefreshUsesCloudCodeWhenNoLanguageServer() async throws {
         let modelsJSON = """
         {"models":{
           "p":{"model":"MODEL_P","displayName":"Gemini 3.1 Pro (High)","quotaInfo":{"remainingFraction":0.4,"resetTime":"2026-06-26T09:37:05Z"}},
@@ -355,8 +370,8 @@ final class AntigravityProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Pro")
         // Legacy per-model data merges into the two pool meters (worst fraction per pool).
         XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Claude"])
-        XCTAssertEqual(used(snapshot.lines[0]), 60)
-        XCTAssertEqual(used(snapshot.lines[1]), 30)
+        XCTAssertEqual(try XCTUnwrap(used(snapshot.lines[0])), 60, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(used(snapshot.lines[1])), 30, accuracy: 0.0001)
     }
 
     @MainActor

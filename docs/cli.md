@@ -13,8 +13,16 @@ openusage codex --force   # refresh through the shared provider engine, cache, p
 
 The command and app import the same providers, authentication stores, pricing, refresh coordinator, and
 snapshot cache. A normal read reuses snapshots less than five minutes old and refreshes missing or stale
-ones. `--force` is the CLI equivalent of the app's manual refresh: it bypasses that freshness gate and
-writes successful results to the same cache. Credentials are used locally and never appear in the output.
+ones. It does not talk to the menu-bar app, so it can print a newer account set than the one still on
+screen.
+
+`--force` first asks the running app, at `http://127.0.0.1:6736`, to re-read Claude accounts and refresh.
+When that app answers 200, the command prints the app's limits and does not fetch again. A named provider
+refreshes even if its card is turned off; a name that matches nothing is an error. The command refreshes
+in its own process only when nothing is listening (the connection is refused). If a request reaches an
+app and times out, the response cannot be read, or the app returns any other error status, the command
+fails and does not refresh again. Codex accounts are not re-read by this request. Credentials are used
+locally and never appear in the output.
 
 A provider argument names providers by plain string matching, exactly like the
 [local HTTP API](local-http-api.md): an exact provider ID names that provider, and a family ID

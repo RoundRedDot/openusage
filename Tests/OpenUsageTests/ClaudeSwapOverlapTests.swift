@@ -3,6 +3,32 @@ import XCTest
 
 extension ClaudeDesktopAuthStoreTests {
     @MainActor
+    func testSelectedSwapRestoresRemovedAccountDuringDiscovery() async throws {
+        let fixture = try overlapFixture()
+        let suite = "ClaudeRestore.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let accounts = ProviderAccountsStore(defaults: defaults)
+        let fixtureHome = home
+        let observer = DefaultAccountObserver(environment: FakeEnvironment([:]), files: fixture.files,
+            keychain: FakeKeychain(), homeDirectory: { fixtureHome })
+        setOverlapDefault(organization, files: fixture.files)
+        let first = await ProviderAccountAssembly.make(observer: observer, accountsStore: accounts,
+            desktop: fixture.store, listDesktopOrganizationDirectories: { _ in [] })
+        let selected = try XCTUnwrap(first.claudeCards.first { $0.organizationID == organization })
+        var records = accounts.records
+        let index = try XCTUnwrap(records.firstIndex { $0.id == selected.id })
+        records[index].removedTombstone = true
+        defaults.set(try JSONEncoder().encode(records), forKey: ProviderAccountsStore.storageKey)
+        defaults.set(["codex"], forKey: "openusage.enabledProviders.v1")
+        let restored = await ProviderAccountAssembly.make(observer: observer,
+            accountsStore: ProviderAccountsStore(defaults: defaults), desktop: fixture.store,
+            listDesktopOrganizationDirectories: { _ in [] })
+        XCTAssertTrue(restored.claudeCards.contains { $0.id == selected.id })
+        XCTAssertTrue(ProviderEnablementStore(defaults: defaults).isEnabled(selected.id))
+    }
+
+    @MainActor
     func testSwapDesktopOverlapKeepsTwoNamedIdentitiesAcrossDefaultSwitches() async throws {
         let fixture = try overlapFixture()
         let suite = "ClaudeOverlap.\(UUID().uuidString)"

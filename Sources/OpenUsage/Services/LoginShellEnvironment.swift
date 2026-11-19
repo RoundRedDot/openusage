@@ -44,14 +44,16 @@ final class LoginShellEnvironment: @unchecked Sendable {
     /// thread on the subprocess: on the main thread it only reads the cache, returning `nil` until the
     /// prewarm fills it; off the main thread it captures on demand if needed.
     func value(for name: String) -> String? {
-        if let env = cachedSnapshot() { return env[name]?.nilIfEmpty }
+        if let env = cachedSnapshot() { return name == "OMP_PROFILE" ? env[name] : env[name]?.nilIfEmpty }
         guard !Thread.isMainThread else { return nil }
-        return capturedEnvironment()[name]?.nilIfEmpty
+        let value = capturedEnvironment()[name]
+        return name == "OMP_PROFILE" ? value : value?.nilIfEmpty
     }
 
     /// The captured value when available, without spawning or waiting for the login shell.
     func cachedValue(for name: String) -> String? {
-        cachedSnapshot()?[name]?.nilIfEmpty
+        let value = cachedSnapshot()?[name]
+        return name == "OMP_PROFILE" ? value : value?.nilIfEmpty
     }
 
     /// Spawn the capture eagerly off the main thread so the first provider refresh (and any UI read)

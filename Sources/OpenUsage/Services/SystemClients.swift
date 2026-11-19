@@ -18,7 +18,8 @@ struct ProcessEnvironmentReader: EnvironmentReading {
         // The process environment first (set by launchd, `launchctl setenv`, or a terminal launch),
         // then the captured login-shell environment — so keys a user exports in their shell profile
         // still resolve in a packaged app launched from Finder/Dock. See `LoginShellEnvironment`.
-        if let value = processEnvironment[name]?.nilIfEmpty {
+        // An explicitly empty OMP profile selects the default instead of inheriting PI_PROFILE.
+        if let value = processEnvironment[name], name == "OMP_PROFILE" || !value.isEmpty {
             return value
         }
         // Identity-relevant keys (provider home overrides, OAuth endpoint switches) resolve from the

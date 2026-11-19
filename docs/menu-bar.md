@@ -19,7 +19,7 @@ Star a metric from any row's right-click menu, or from the always-visible star b
 Settings → Appearance → Icon Style:
 
 - **Text** — provider icon plus values; two starred metrics from the same provider stack as a labeled pair.
-- **Bars** — a compact glyph containing the first four starred metrics that have a limit (metrics without limits only appear in Text style).
+- **Bars** — one weekly quota for each of the first three enabled providers, in provider order. If a provider has multiple weekly quotas, the first one with data is used. A provider with no available weekly quota is skipped.
 
 ## Hiding usage while screen sharing
 
@@ -29,4 +29,4 @@ Detection rides the system's own "an app is capturing the screen" signal — the
 
 ## What the strip shows
 
-The strip only renders real data. A starred metric with nothing fetched yet is skipped; a provider whose stars all lack data disappears entirely (icon included). When nothing has data, the strip falls back to the app icon. Stars follow your Customize order — Always Visible metrics first, then On Demand ones. A metric can be starred whether it's Always Visible or On Demand.
+The strip only renders real data. In Text style, a starred metric with nothing fetched yet is skipped; a provider whose stars all lack data disappears entirely (icon included). Bars use weekly quotas independently of stars. When nothing has data, the strip falls back to the app icon. Stars follow your Customize order — Always Visible metrics first, then On Demand ones. A metric can be starred whether it's Always Visible or On Demand.

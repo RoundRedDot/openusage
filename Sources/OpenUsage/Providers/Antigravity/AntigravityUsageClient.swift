@@ -27,11 +27,14 @@ enum TokenRefreshOutcome: Sendable {
 /// Google Cloud Code endpoints, and the Google OAuth token refresh.
 struct AntigravityUsageClient: Sendable {
     static let lsService = "exa.language_server_pb.LanguageServerService"
-    // The daily endpoint can omit Gemini quotas from a successful response; prefer production.
+    // Plan and project lookups prefer production.
     static let cloudCodeURLs = [
         "https://cloudcode-pa.googleapis.com",
         "https://daily-cloudcode-pa.googleapis.com"
     ]
+    // Production can return untouched Gemini windows; daily has the active counters.
+    // Use production for missing buckets or failed daily reads.
+    static let quotaSummaryURLs = Array(cloudCodeURLs.reversed())
     static let fetchModelsPath = "/v1internal:fetchAvailableModels"
     static let loadCodeAssistPath = "/v1internal:loadCodeAssist"
     static let retrieveQuotaPath = "/v1internal:retrieveUserQuota"
@@ -79,26 +82,39 @@ struct AntigravityUsageClient: Sendable {
     /// POST a Cloud Code endpoint, trying each base URL in turn. A 401/403 short-circuits to `.authFailed`
     /// (same token would fail on the other base); other non-2xx / transport errors fall through to the
     /// next base and finally `.unavailable`.
-    func cloudCode(path: String, token: String, userAgent: String, body: [String: String]) async -> CloudCodeOutcome {
+    func cloudCode(
+        path: String,
+        token: String,
+        userAgent: String,
+        body: [String: String],
+        baseURLs: [String] = AntigravityUsageClient.cloudCodeURLs
+    ) async -> CloudCodeOutcome {
         let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
-        return await cloudCode(path: path, token: token, userAgent: userAgent, payload: payload)
+        return await cloudCode(path: path, token: token, userAgent: userAgent, payload: payload, baseURLs: baseURLs)
     }
 
     /// `loadCodeAssist` with Antigravity's client metadata. Without it the response carries only
     /// `allowedTiers` — no `currentTier`/`paidTier` — so the plan can't be read.
     func loadCodeAssist(token: String) async -> CloudCodeOutcome {
-        await cloudCode(path: Self.loadCodeAssistPath, token: token, userAgent: Self.clientUserAgent, payload: Self.loadCodeAssistPayload)
+        await cloudCode(
+            path: Self.loadCodeAssistPath,
+            token: token,
+            userAgent: Self.clientUserAgent,
+            payload: Self.loadCodeAssistPayload,
+            baseURLs: Self.cloudCodeURLs
+        )
     }
 
-    /// The Antigravity client's own User-Agent shape (`%s/%s (aidev_client; os_type=…; arch=…)` in its
-    /// language server). Google marks other callers `UNSUPPORTED_CLIENT` and drops `paidTier`.
+    /// The Antigravity hub client User-Agent shape (`antigravity/hub/<version> (aidev_client; os_type=…; arch=…)`).
+    /// Google gates the Gemini Models quota group (covering Gemini 4 Hydrogen/Carbon/Neon and Gemini 3.8 Flash)
+    /// and `paidTier` metadata on this client identity; bare `antigravity` returns only the Claude/GPT group.
     static let clientUserAgent: String = {
         #if arch(arm64)
         let arch = "arm64"
         #else
         let arch = "amd64"
         #endif
-        return "antigravity/2.24.0 (aidev_client; os_type=darwin; arch=\(arch))"
+        return "antigravity/hub/2.24.0 (aidev_client; os_type=darwin; arch=\(arch))"
     }()
 
     /// `ClientMetadata` enum names as they appear in the Antigravity language server's protos.
@@ -106,8 +122,14 @@ struct AntigravityUsageClient: Sendable {
         #"{"metadata":{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}}"#.utf8
     )
 
-    private func cloudCode(path: String, token: String, userAgent: String, payload: Data) async -> CloudCodeOutcome {
-        for base in Self.cloudCodeURLs {
+    private func cloudCode(
+        path: String,
+        token: String,
+        userAgent: String,
+        payload: Data,
+        baseURLs: [String]
+    ) async -> CloudCodeOutcome {
+        for base in baseURLs {
             guard let url = URL(string: base + path) else { continue }
             let request = Self.cloudCodeRequest(url: url, token: token, userAgent: userAgent, payload: payload)
             guard let response = try? await http.send(request) else { continue }
@@ -118,21 +140,20 @@ struct AntigravityUsageClient: Sendable {
     }
 
     /// POST a Cloud Code endpoint on each base URL in order and return every 2xx body in base-URL order.
-    /// The hosts can disagree: `daily-cloudcode-pa` has answered the quota summary with only the Claude
-    /// group while `cloudcode-pa` also returned Gemini, so a caller merging by id may need both. Stops
-    /// after the first base when its 2xx body is one `isComplete` accepts: callers merge first-wins, so
-    /// a later answer couldn't change the result. Any 2xx wins; otherwise a 401/403 on any base is
+    /// Stops after the first base when its 2xx body satisfies `isComplete`: callers merge first-wins, so
+    /// a later answer could not change the result. Any 2xx wins; otherwise a 401/403 on any base is
     /// `.authFailed`, and anything else `.unavailable`.
     func cloudCodeAllHosts(
         path: String,
         token: String,
         userAgent: String,
         body: [String: String],
+        baseURLs: [String] = AntigravityUsageClient.quotaSummaryURLs,
         isComplete: (Data) -> Bool = { _ in false }
     ) async -> CloudCodeAllHostsOutcome {
         let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
         var responses: [HTTPResponse] = []
-        for (index, base) in Self.cloudCodeURLs.enumerated() {
+        for (index, base) in baseURLs.enumerated() {
             guard let url = URL(string: base + path) else { continue }
             let request = Self.cloudCodeRequest(url: url, token: token, userAgent: userAgent, payload: payload)
             guard let response = try? await http.send(request) else { continue }

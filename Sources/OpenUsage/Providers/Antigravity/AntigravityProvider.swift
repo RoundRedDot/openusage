@@ -290,13 +290,14 @@ final class AntigravityProvider: ProviderRuntime {
         // Authoritative first: the quota summary (merged pools + weekly windows). A parsed summary —
         // even one with zero usable buckets — is the answer and must never fall into the legacy chain
         // below, which fabricates "fully used" from missing quota info. A 404 (build without the RPC)
-        // reads as `.unavailable` and falls through. Both hosts are asked and their buckets merged by id,
-        // because one host can omit a whole pool.
+        // reads as `.unavailable` and falls through. Daily is asked first for active counters, with
+        // production filling any missing buckets or failed daily reads.
         switch await usageClient.cloudCodeAllHosts(
             path: AntigravityUsageClient.quotaSummaryPath,
             token: token,
-            userAgent: "antigravity",
+            userAgent: AntigravityUsageClient.clientUserAgent,
             body: [:],
+            baseURLs: AntigravityUsageClient.quotaSummaryURLs,
             isComplete: AntigravityUsageMapper.isCompleteSummary
         ) {
         case .authFailed:
@@ -311,7 +312,13 @@ final class AntigravityProvider: ProviderRuntime {
         }
 
         // Legacy: fetchAvailableModels — the full Antigravity model set (Gemini + Claude + GPT-OSS).
-        switch await usageClient.cloudCode(path: AntigravityUsageClient.fetchModelsPath, token: token, userAgent: "antigravity", body: [:]) {
+        switch await usageClient.cloudCode(
+            path: AntigravityUsageClient.fetchModelsPath,
+            token: token,
+            userAgent: AntigravityUsageClient.clientUserAgent,
+            body: [:],
+            baseURLs: AntigravityUsageClient.quotaSummaryURLs
+        ) {
         case .authFailed:
             return .authFailed
         case .ok(let data):

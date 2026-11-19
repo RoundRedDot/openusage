@@ -53,6 +53,23 @@ final class LoginShellEnvironmentTests: XCTestCase {
         XCTAssertEqual(runner.callCount, 1)
     }
 
+    func testEmptyOmpProfileSelectsDefaultInProcessAndCapturedShell() async {
+        let runner = RecordingRunner(stdout: [begin, "OMP_PROFILE=", "PI_PROFILE=work", "EMPTY=", "PATH=/bin", end].joined(separator: "\0"))
+        let shell = LoginShellEnvironment(runner: runner)
+        let captured = await Task.detached { shell.value(for: "OMP_PROFILE") }.value
+        XCTAssertEqual(captured, "")
+        XCTAssertEqual(shell.cachedValue(for: "OMP_PROFILE"), "")
+        XCTAssertNil(shell.value(for: "EMPTY"))
+
+        let process = ProcessEnvironmentReader(
+            processEnvironment: ["OMP_PROFILE": "", "PI_PROFILE": "work"],
+            shellEnvironment: shell, launchSnapshot: { nil }
+        )
+        XCTAssertEqual(process.value(for: "OMP_PROFILE"), "")
+        let shellOnly = ProcessEnvironmentReader(processEnvironment: [:], shellEnvironment: shell, launchSnapshot: { nil })
+        XCTAssertEqual(shellOnly.value(for: "OMP_PROFILE"), "")
+    }
+
     /// The Bugbot fix: a main-thread read before the cache is warm must not spawn or wait on the
     /// subprocess, so the UI can't freeze. It returns nil until the prewarm fills the cache.
     func testMainThreadReadDoesNotRunSubprocess() {

@@ -30,6 +30,7 @@ What each provider tracks, where its credentials come from, and what to do when 
 - [Cursor](providers/cursor.md)
 - [Devin](providers/devin.md)
 - [Grok](providers/grok.md)
+- [Oh My Pi](providers/oh-my-pi.md)
 - [Ollama](providers/ollama.md)
 - [OpenCode](providers/opencode.md)
 - [OpenRouter](providers/openrouter.md)

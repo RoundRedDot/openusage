@@ -2,12 +2,12 @@ import Foundation
 import KeyboardShortcuts
 import Observation
 
-/// Composition root: owns the (constant) registry and the (mutable) stores, injected
-/// into the SwiftUI environment.
+/// Composition root: owns the registry and the mutable stores, injected into the SwiftUI
+/// environment. The registry follows account discovery; an explicit refresh can replace it.
 @MainActor
 @Observable
 final class AppContainer {
-    let registry: WidgetRegistry
+    private(set) var registry: WidgetRegistry
     let layout: LayoutStore
     let dataStore: WidgetDataStore
     /// Opt-in private iCloud document sync for additive machine-local daily history.
@@ -39,10 +39,12 @@ final class AppContainer {
     /// Claims Codex reset credits and Claude reset grants from the resets popover (the app's only
     /// provider-API writes), keyed by provider id. Each service shares its card's credentials. The view
     /// tree selects the matching service from `\.resetClaims` for each card's resets popover.
-    let resetClaims: [String: any ResetClaimService]
+    private(set) var resetClaims: [String: any ResetClaimService]
     /// The provider runtimes, kept so on-demand credential detection (the welcome screen and the
     /// Customize "Reset All" reseed) can re-probe `hasLocalCredentials()` on every card.
-    let providers: [ProviderRuntime]
+    /// An explicit refresh replaces Claude or Codex cards whose login changed and keeps every
+    /// other instance.
+    private(set) var providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     /// `nil` until `startRefreshing()`, which the welcome screen delays until the user has picked providers.
@@ -53,6 +55,11 @@ final class AppContainer {
     /// Persists a fresh `ShellEnvironmentSnapshot` once the login-shell capture completes, so the next
     /// launch can read shell-exported facts (provider home overrides) even when its own capture is slow.
     private let shellEnvironmentSnapshotTask: Task<Void, Never>
+    /// The account pass currently bound to `providers`. Explicit refresh compares a new pass with
+    /// this one and swaps only the cards that changed.
+    private var appliedAccounts: ProviderAccountAssembly
+    /// Serializes overlapping explicit refreshes so two discoveries cannot apply out of order.
+    private var accountReconcileChain: Task<Set<String>, Never>?
 
     /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
     /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
@@ -120,6 +127,7 @@ final class AppContainer {
             enablement: enablement
         )
         self.providers = providers
+        self.appliedAccounts = accountAssembly
         self.onboarding = onboarding
         self.registry = registry
         self.enablement = enablement
@@ -132,24 +140,7 @@ final class AppContainer {
         // The resets popover's claim services, sharing each provider's credential loading and HTTP
         // client so the claim's auth can't drift from the provider's. A claim forces a refresh so the
         // meters and reset count reconcile before the popover shows its result.
-        var resetClaims: [String: any ResetClaimService] = [:]
-        for codex in providers.compactMap({ $0 as? CodexProvider }) {
-            let id = codex.provider.id
-            resetClaims[id] = CodexResetClaimService(
-                authStore: codex.authStore,
-                usageClient: codex.usageClient,
-                refreshAfterClaim: { [weak dataStore] in
-                    await ResetClaimRefresh.run(dataStore: dataStore, providerID: id, tag: "codex")
-                }
-            )
-        }
-        for claude in providers.compactMap({ $0 as? ClaudeProvider }) {
-            let id = claude.provider.id
-            resetClaims[id] = ClaudeResetClaimService(provider: claude, refreshAfterClaim: { [weak dataStore] in
-                await ResetClaimRefresh.run(dataStore: dataStore, providerID: id, tag: "claude")
-            })
-        }
-        self.resetClaims = resetClaims
+        self.resetClaims = Self.resetClaims(for: providers, dataStore: dataStore)
 
         // Anonymous usage telemetry (mandatory daily activity and crashes, optional provider rollups).
         // Its state lives in a dedicated UserDefaults suite, kept separate from app settings so the user's
@@ -160,7 +151,8 @@ final class AppContainer {
         let telemetry = TelemetryRecorder(
             sink: PostHogTelemetrySink(enabled: telemetryStore.enabled),
             store: telemetryStore,
-            snapshot: { [registry, enablement, layout] in
+            snapshot: { [enablement, layout] in
+                let registry = layout.registry
                 // Report the *active* configuration: a metric whose provider is turned off is hidden
                 // from the dashboard and menu bar, so exclude it here too — keeping the metric arrays
                 // consistent with `enabledProviders` (which is also enablement-filtered).
@@ -184,7 +176,8 @@ final class AppContainer {
         self.transparency = PopoverTransparencyStore()
         self.privacy = MenuBarPrivacyStore()
         self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
-            LocalUsageAPI.State(
+            let registry = layout.registry
+            return LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
                 knownIDs: Set(registry.providers.map(\.id)),
                 snapshots: dataStore.snapshots,
@@ -192,6 +185,15 @@ final class AppContainer {
                 errors: dataStore.providerErrors
             )
         })
+        dataStore.prepareUserRefresh = { [weak self] in
+            await self?.reconcileAccountsForExplicitRefresh() ?? []
+        }
+        localAPI.performRefresh = { [weak self] token in
+            guard let self else {
+                return LocalUsageAPI.Response(status: 503, body: Data(#"{"error":"server_busy"}"#.utf8))
+            }
+            return await self.refreshForLocalClient(token: token)
+        }
         localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
         // effectively always is. Notification authorization is requested the first time a trigger is
@@ -203,6 +205,129 @@ final class AppContainer {
         refreshTask?.cancel()
         newProviderTask?.cancel()
         shellEnvironmentSnapshotTask.cancel()
+    }
+
+    private static func resetClaims(
+        for providers: [ProviderRuntime],
+        dataStore: WidgetDataStore
+    ) -> [String: any ResetClaimService] {
+        var claims: [String: any ResetClaimService] = [:]
+        for codex in providers.compactMap({ $0 as? CodexProvider }) {
+            let id = codex.provider.id
+            claims[id] = CodexResetClaimService(
+                authStore: codex.authStore,
+                usageClient: codex.usageClient,
+                refreshAfterClaim: { [weak dataStore] in
+                    await ResetClaimRefresh.run(dataStore: dataStore, providerID: id, tag: "codex")
+                }
+            )
+        }
+        for claude in providers.compactMap({ $0 as? ClaudeProvider }) {
+            let id = claude.provider.id
+            claims[id] = ClaudeResetClaimService(provider: claude, refreshAfterClaim: { [weak dataStore] in
+                await ResetClaimRefresh.run(dataStore: dataStore, providerID: id, tag: "claude")
+            })
+        }
+        return claims
+    }
+
+    /// Re-reads Claude accounts and updates the running cards. Codex stays as it was at launch.
+    /// Overlapping calls chain, so a switch that lands during an earlier discovery is applied after
+    /// it, not lost.
+    func reconcileAccountsForExplicitRefresh() async -> Set<String> {
+        let previous = accountReconcileChain
+        let task = Task { @MainActor () -> Set<String> in
+            _ = await previous?.value
+            return await self.reconcileAccountsNow()
+        }
+        accountReconcileChain = task
+        return await task.value
+    }
+
+    private func reconcileAccountsNow() async -> Set<String> {
+        // Claude cards do not read the Codex provider. Limiting the pass to Claude skips Codex
+        // home scans, `accountsStore.reconcile` for Codex observations, and `upgradeCodexIdentity`.
+        // The applied Codex discovery is copied back so an empty Codex side cannot look like removal.
+        let discovered = await ProviderAccountAssembly.make(waitsForLoginShell: true, families: ["claude"])
+        let next = AccountRuntimeUpdate.preservingCodex(discovered: discovered, applied: appliedAccounts)
+        guard let change = AccountRuntimeUpdate.change(current: providers, from: appliedAccounts, to: next) else {
+            appliedAccounts = next
+            return []
+        }
+        let registry = WidgetRegistry.from(change.providers)
+        self.registry = registry
+        let invalidate = Set(change.added + change.removed + change.rebound)
+        dataStore.installAccountRuntimes(
+            registry: registry,
+            providers: change.providers,
+            identityKeys: next.identityKeysByCard,
+            invalidateIDs: invalidate,
+            dropSnapshotIDs: Set(change.dropSnapshotIDs)
+        )
+        layout.adoptDiscoveredProviders(registry)
+        let unseen = enablement.registerKnownProviders(Set(change.added))
+        let providerIDs = change.providers.map(\.provider.id)
+        enablement.enableDiscoveredAccounts(AccountRuntimeUpdate.idsToEnable(
+            added: change.added,
+            unseen: unseen,
+            providerIDs: providerIDs,
+            isEnabled: { enablement.isEnabled($0) }
+        ))
+        let kept = Set(change.providers.map(\.provider.id)).subtracting(change.added).subtracting(change.rebound)
+        var claims = resetClaims.filter { kept.contains($0.key) }
+        let rebuilt = Self.resetClaims(for: change.providers, dataStore: dataStore)
+        for id in change.added + change.rebound {
+            if let claim = rebuilt[id] { claims[id] = claim }
+        }
+        resetClaims = claims
+        providers = change.providers
+        appliedAccounts = next
+        AppLog.info(
+            .config,
+            "accounts: explicit refresh updated cards (+\(change.added.count) -\(change.removed.count) rebound \(change.rebound.count))"
+        )
+        return Set(change.added + change.rebound)
+    }
+
+    /// `openusage --force` while this process is running. Discovers account changes, then force-fetches
+    /// the requested cards (or every enabled card) plus any card whose binding just changed.
+    func refreshForLocalClient(token: String?) async -> LocalUsageAPI.Response {
+        let changed = await reconcileAccountsForExplicitRefresh()
+        KeychainAccessGuard.forgetDenials()
+        let known = Set(layout.registry.providers.map(\.id))
+        let requested: Set<String>?
+        if let token {
+            let matched = known.filter { $0 == token || ProviderAccountID.family(of: $0) == token }
+            guard !matched.isEmpty else {
+                return LocalUsageAPI.Response(status: 404, body: Data(#"{"error":"provider_not_found"}"#.utf8))
+            }
+            requested = matched
+        } else {
+            requested = nil
+        }
+        let targets = AccountRuntimeUpdate.localRefreshTargets(
+            orderedIDs: layout.orderedProviderIDs(),
+            requested: requested,
+            changed: changed,
+            isEnabled: { enablement.isEnabled($0) }
+        )
+        // A named card refreshes even when that card is turned off, matching the one-shot CLI.
+        // Cards only pulled in because their binding changed still honor the user's toggle.
+        // The fetches overlap; awaiting them serially can outlast the CLI's 150s timeout.
+        let outcomes = await dataStore.refreshIDs(targets, force: true) { id in
+            requested?.contains(id) != true
+        }
+        let registry = layout.registry
+        let state = LocalUsageAPI.State(
+            enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
+            knownIDs: known,
+            snapshots: dataStore.snapshots,
+            limitDescriptors: registry.limitDescriptorsByProvider,
+            errors: dataStore.providerErrors
+        )
+        let path = token.map { "/v1/limits/\($0)" } ?? "/v1/limits"
+        let limits = LocalUsageAPI.respond(method: "GET", path: path, state: state)
+        return AccountRuntimeUpdate.responseAfterLocalRefresh(outcomes: outcomes, limits: limits)
     }
 
     func startRefreshing() {

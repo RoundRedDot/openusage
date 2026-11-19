@@ -215,6 +215,15 @@ extension PiUsageError: CategorizedError {
     }
 }
 
+extension OhMyPiUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notDetected: .notLoggedIn
+        case .invalidProfile: .authInvalid
+        }
+    }
+}
+
 extension OpenRouterAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

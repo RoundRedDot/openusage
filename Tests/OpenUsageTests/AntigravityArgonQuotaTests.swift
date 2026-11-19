@@ -21,10 +21,15 @@ final class AntigravityArgonQuotaTests: XCTestCase {
     private func assertSharedPoolsOnly(_ data: Data, file: StaticString = #filePath, line: UInt = #line) {
         let lines = AntigravityUsageMapper.parseQuotaSummary(data)
         XCTAssertEqual(lines?.map(\.label), ["Session", "Weekly", "Claude", "Claude Weekly"], file: file, line: line)
-        XCTAssertEqual(lines?.map { metric -> Double? in
+        let actual = lines?.compactMap { metric -> Double? in
             guard case .progress(_, let used, _, _, _, _, _) = metric else { return nil }
             return used
-        }, [20, 30, 40, 50], file: file, line: line)
+        } ?? []
+        let expected: [Double] = [20, 30, 40, 50]
+        XCTAssertEqual(actual.count, expected.count, file: file, line: line)
+        for (lhs, rhs) in zip(actual, expected) {
+            XCTAssertEqual(lhs, rhs, accuracy: 0.0001, file: file, line: line)
+        }
     }
 
     func testAbsentArgonPreservesExistingFourBuckets() {
@@ -132,7 +137,7 @@ final class AntigravityArgonQuotaTests: XCTestCase {
         XCTAssertEqual(lines?.map(\.label), ["Session"])
     }
 
-    func testLegacyArgonModelsNeverJoinTheSharedSessionEvenWithNumericQuota() {
+    func testLegacyArgonModelsNeverJoinTheSharedSessionEvenWithNumericQuota() throws {
         let json = """
         {"models":{
           "argon":{"model":"MODEL_PLACEHOLDER_M421","displayName":"Gemini 4 Argon","quotaInfo":{}},
@@ -141,10 +146,16 @@ final class AntigravityArgonQuotaTests: XCTestCase {
         }}
         """
         let lines = AntigravityUsageMapper.buildLines(AntigravityUsageMapper.parseCloudCodeModels(Data(json.utf8)))
-        XCTAssertEqual(lines, [.progress(
-            label: "Session", used: 20, limit: 100, format: .percent,
-            resetsAt: nil, periodDurationMs: MetricPeriod.sessionMs
-        )])
+        XCTAssertEqual(lines.count, 1)
+        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, _) = try XCTUnwrap(lines.first) else {
+            return XCTFail("expected progress line")
+        }
+        XCTAssertEqual(label, "Session")
+        XCTAssertEqual(used, 20, accuracy: 0.0001)
+        XCTAssertEqual(limit, 100)
+        XCTAssertEqual(format, .percent)
+        XCTAssertNil(resetsAt)
+        XCTAssertEqual(periodDurationMs, MetricPeriod.sessionMs)
 
         let buckets = Data(#"{"buckets":[{"modelId":"gemini-4-argon","remainingFraction":0.1},{"modelId":"gemini-3.8-flash","remainingFraction":0.8}]}"#.utf8)
         XCTAssertEqual(AntigravityUsageMapper.buildLines(AntigravityUsageMapper.parseQuotaBuckets(buckets)), lines)

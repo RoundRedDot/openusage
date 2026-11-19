@@ -23,6 +23,27 @@ final class MenuBarPanel: NSPanel {
 /// text input (the Settings shortcut recorder silently ignored key presses) and there is no public API
 /// to present it programmatically. A plain `NSStatusItem` + a key-capable `NSPanel` gives a real key
 /// window and a real show/hide pair the global shortcut can call directly.
+/// Re-applies account-bound environment when an explicit refresh replaces reset-claim services.
+/// Layout and the data store are the same instances for the life of the process; their own
+/// observable fields update the dashboard. The claim map is a value, so it has to be read here.
+private struct DashboardHost: View {
+    let container: AppContainer
+    let updater: UpdaterController
+
+    var body: some View {
+        LocalizedRoot {
+            DashboardView()
+        }
+        .reduceAnimationsWhenRequested()
+        .environment(container)
+        .environment(container.layout)
+        .environment(container.dataStore)
+        .environment(container.transparency)
+        .environment(updater)
+        .environment(\.resetClaims, container.resetClaims)
+    }
+}
+
 @MainActor
 final class StatusItemController: NSObject {
     private let container: AppContainer
@@ -60,21 +81,7 @@ final class StatusItemController: NSObject {
         }
 
         let hosting = NSHostingController(
-            rootView: AnyView(
-                // Rebuilds the tree when the UI language changes, so every translated string re-reads.
-                LocalizedRoot {
-                    DashboardView()
-                }
-                    // Own the preference outside `DashboardView` so the view can read the resolved
-                    // value while deciding whether to mount its two-page transition structure.
-                    .reduceAnimationsWhenRequested()
-                    .environment(container)
-                    .environment(container.layout)
-                    .environment(container.dataStore)
-                    .environment(container.transparency)
-                    .environment(updater)
-                    .environment(\.resetClaims, container.resetClaims)
-            )
+            rootView: AnyView(DashboardHost(container: container, updater: updater))
         )
         // The host view fills the panel. SwiftUI measures each screen and drives the panel height;
         // content scrolls only when that height reaches the available-screen limit.

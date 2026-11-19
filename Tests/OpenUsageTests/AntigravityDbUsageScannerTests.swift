@@ -95,6 +95,34 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily.first?.totalTokens, 15)
     }
 
+    func testGemini4HydrogenCarbonNeonAndArgonPriceAndFoldIntoBaseFamilies() async throws {
+        let fixture = try makeDatabaseDirectory()
+        let timestamp = UInt64(now.timeIntervalSince1970) - 3_600
+        let sqlite = AntigravityFakeSQLite(rowsByPath: [fixture.paths[0]: [
+            .init(index: 0, blob: antigravityGenerationBlob(model: "gemini-4-hydrogen", input: 10, output: 0, label: "Gemini 4 Hydrogen (High)", timestamp: timestamp)),
+            .init(index: 1, blob: antigravityGenerationBlob(model: "gemini-4-hydrogen-tiered-high", input: 5, output: 0, label: "Gemini 4 Hydrogen (High)", timestamp: timestamp)),
+            .init(index: 2, blob: antigravityGenerationBlob(model: "gemini-4-carbon-high", input: 7, output: 0, label: "Gemini 4 Carbon (High)", timestamp: timestamp)),
+            .init(index: 3, blob: antigravityGenerationBlob(model: "gemini-4-neon-high", input: 9, output: 0, label: "Gemini 4 Neon (High)", timestamp: timestamp)),
+            .init(index: 4, blob: antigravityGenerationBlob(model: "gemini-default", input: 4, output: 0, label: "Gemini 4 Neon (XHigh)", timestamp: timestamp)),
+            .init(index: 5, blob: antigravityGenerationBlob(model: "gemini-4-argon-trial", input: 3, output: 0, label: "Gemini 4 Argon (High)", timestamp: timestamp)),
+        ]])
+        let scanner = AntigravityDbUsageScanner(sqlite: sqlite, conversationsDirectories: { [fixture.url.path] })
+
+        let result = await scanner.scan(now: now, pricing: TestPricing.bundled)
+        let scan = try XCTUnwrap(result)
+        XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
+        let models = try XCTUnwrap(scan.modelUsage?.daily.first?.models)
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: models.map { ($0.model, $0.totalTokens) }),
+            [
+                "gemini-4-hydrogen": 15,
+                "gemini-4-carbon": 7,
+                "gemini-4-neon": 13,
+                "gemini-4-argon": 3,
+            ]
+        )
+    }
+
     func testScansEveryConversationDirectoryAndSkipsMissingOnes() async throws {
         let cli = try makeDatabaseDirectory()
         let ide = try makeDatabaseDirectory()

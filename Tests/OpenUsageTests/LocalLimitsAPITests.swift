@@ -246,6 +246,7 @@ final class LocalLimitsAPITests: XCTestCase {
             "copilot": ["premiumCredits", "extraUsage", "orgCredits", "orgSpend", "chat", "completions"],
             "devin": ["daily", "weekly", "extraUsageBalance"],
             "grok": ["weekly"],
+            "omp": [],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["credits", "balance", "keyLimit"],

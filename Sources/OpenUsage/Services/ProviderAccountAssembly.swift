@@ -28,7 +28,11 @@ struct ProviderAccountAssembly {
     /// `waitsForLoginShell`: true for the menu-bar app (a Finder/Dock launch inherits no shell
     /// exports, so the pass leans on the login-shell layers), false for the one-shot CLI (a terminal
     /// launch's process environment already carries the user's exports).
-    static func make(defaults: UserDefaults = .standard, waitsForLoginShell: Bool) async -> ProviderAccountAssembly {
+    static func make(
+        defaults: UserDefaults = .standard,
+        waitsForLoginShell: Bool,
+        families requestedFamilies: Set<String>? = nil
+    ) async -> ProviderAccountAssembly {
         // The identity read needs the login shell's exports (CLAUDE_CONFIG_DIR/CODEX_HOME name the
         // default homes), and it reads them through the very same reader the provider auth stores
         // use — `ProcessEnvironmentReader`, which pins identity-relevant keys to the persisted
@@ -42,15 +46,18 @@ struct ProviderAccountAssembly {
         let shellFactsReadable = !waitsForLoginShell
             || LoginShellEnvironment.shared.capturedSuccessfully
             || ShellEnvironmentSnapshotStore.launchSnapshot != nil
-        let families = shellFactsReadable
+        let readable = shellFactsReadable
             ? ProviderAccountID.families
             : ProviderAccountID.families.filter { family in
                 guard let key = Self.homeOverrideKeys[family] else { return false }
                 return ProcessInfo.processInfo.environment[key]?.nilIfEmpty != nil
             }
-        if families.count < ProviderAccountID.families.count {
-            AppLog.info(.config, "account identity read skipped for \(ProviderAccountID.families.subtracting(families).sorted().joined(separator: ", ")): login shell cold and no shell-environment snapshot exists yet")
+        if readable.count < ProviderAccountID.families.count {
+            AppLog.info(.config, "account identity read skipped for \(ProviderAccountID.families.subtracting(readable).sorted().joined(separator: ", ")): login shell cold and no shell-environment snapshot exists yet")
         }
+        // `requestedFamilies` is how an explicit refresh reads Claude without also reconciling
+        // Codex. The default remains every family whose home facts are readable.
+        let families = requestedFamilies.map { readable.intersection($0) } ?? readable
         let assemblyStartedAt = ProcessInfo.processInfo.systemUptime
         let assembly = await make(
             observer: DefaultAccountObserver(
@@ -149,6 +156,9 @@ struct ProviderAccountAssembly {
         }
 
         let swapAccounts = claudeReadout.swapAccounts
+        if let identity = identityKeys["claude"], swapAccounts.contains(where: { $0.identityKey == identity }) {
+            accountsStore.restoreSelectedClaudeSwap(identity)
+        }
         if !swapAccounts.isEmpty {
             AppLog.info(.config, "accounts: discovered \(swapAccounts.count) Claude Swap accounts")
         }

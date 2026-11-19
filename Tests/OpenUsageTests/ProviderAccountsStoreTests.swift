@@ -112,6 +112,26 @@ final class ProviderAccountsStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.defaultBadgeHolder(family: "codex")?.sources.first?.anchor, "/Users/dev/.codex")
     }
 
+    func testRestoreSelectedClaudeSwapRestoresOnlySelectedAccount() throws {
+        let defaults = makeScratchDefaults()
+        let store = ProviderAccountsStore(defaults: defaults)
+        store.reconcile(with: [defaultHomeObservation(family: "claude", identityKey: "a"),
+                               defaultHomeObservation(family: "claude", identityKey: "b")])
+        var records = store.records
+        for index in records.indices { records[index].removedTombstone = true }
+        defaults.set(try JSONEncoder().encode(records), forKey: ProviderAccountsStore.storageKey)
+        defaults.set(["codex"], forKey: "openusage.enabledProviders.v1")
+        let reloaded = ProviderAccountsStore(defaults: defaults)
+        reloaded.restoreSelectedClaudeSwap("b")
+        XCTAssertTrue(try XCTUnwrap(reloaded.records.first { $0.identityKey == "a" }).removedTombstone)
+        let restored = try XCTUnwrap(reloaded.records.first { $0.identityKey == "b" })
+        XCTAssertFalse(restored.removedTombstone)
+        XCTAssertTrue(ProviderEnablementStore(defaults: defaults).isEnabled(restored.id))
+        ProviderEnablementStore(defaults: defaults).setEnabled(false, for: restored.id)
+        reloaded.restoreSelectedClaudeSwap("b")
+        XCTAssertFalse(ProviderEnablementStore(defaults: defaults).isEnabled(restored.id))
+    }
+
     func testUndecodableRegistryStartsFresh() {
         let defaults = makeScratchDefaults()
         defaults.set(Data("not json".utf8), forKey: ProviderAccountsStore.storageKey)

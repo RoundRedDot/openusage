@@ -91,8 +91,9 @@ made while OpenUsage was refreshing.
 
 OpenUsage discovers the saved accounts in Claude Swap's `~/.claude-swap-backup/sequence.json`
 on launch. Each account gets a card labeled with its organization followed by its email. A login already found through Claude Code
-or Desktop shares the same card when both the account and organization match. Restart OpenUsage after
-adding or removing a saved account.
+or Desktop shares the same card when both the account and organization match. An explicit refresh
+updates the running menu bar after an account is added, removed, or switched. The five-minute timer
+does not.
 
 If the default login identifies an account but has no organization ID, it remains available as a
 separate default card alongside saved Swap accounts. OpenUsage does not guess which saved

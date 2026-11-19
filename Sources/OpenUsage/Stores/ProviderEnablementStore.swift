@@ -96,6 +96,18 @@ final class ProviderEnablementStore {
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
+    /// Turns on accounts an explicit refresh just discovered. Unlike `setEnabled`, this does not wake
+    /// the periodic loop: the refresh that found the accounts fetches them itself, and a wake here
+    /// would race that fetch. No-op in legacy disabled-list mode, where an unknown id is already on.
+    func enableDiscoveredAccounts(_ ids: [String]) {
+        guard var enabled = enabledIDs else { return }
+        let updated = enabled.union(ids)
+        guard updated != enabled else { return }
+        enabledIDs = updated
+        defaults.set(Array(updated), forKey: Self.enabledStorageKey)
+        onChange?()
+    }
+
     /// Switches the store into enabled-list mode with exactly `ids` on. Used by `FirstRunSeeder`: a
     /// fresh install starts with none on, and Reset All snaps to the fallback set, then the detected
     /// set. Fires `onProviderEnabled` for each newly-on provider and posts the change notification, so

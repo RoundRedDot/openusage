@@ -589,12 +589,13 @@ final class CodexProviderTests: XCTestCase {
     }
 
     func testOpenCodeCodexOAuthUsageIsMergedIntoCodexHistory() async throws {
-        // A far-future fixture keeps PiUsageScanner.shared from folding the developer's real local pi
-        // history into this integration test.
-        let now = OpenUsageISO8601.date(from: "2099-02-20T16:00:00.000Z")!
-        let milliseconds = Int(OpenUsageISO8601.date(
-            from: "2099-02-20T14:00:00.000Z"
-        )!.timeIntervalSince1970 * 1000)
+        // A far-future local-calendar fixture keeps PiUsageScanner.shared from folding the
+        // developer's real local pi history into this test and keeps both instants on the same
+        // local day in every timezone (including UTC+8 and further east).
+        let calendar = Calendar.current
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2099, month: 2, day: 20, hour: 16)))
+        let messageDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2099, month: 2, day: 20, hour: 14)))
+        let milliseconds = Int(messageDate.timeIntervalSince1970 * 1000)
         let openCodeRows = "[[\(milliseconds),0,150,\"gpt-test\",100,0,0,50,0,\"open-code-message\"]]"
         let openCodeScanner = OpenCodeCodexUsageScanner(
             authStore: openCodeAuthStore(

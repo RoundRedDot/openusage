@@ -270,10 +270,16 @@ actor AntigravityDbUsageScanner {
     /// `gemini-pro-default` as the ID when the picker is on its default choice and records the model
     /// that served the turn as the label, so placeholders prefer the label and fall back to the ID.
     /// Subagent tiers (`flash_lite`, `flash`, `pro`) resolve through a server-sent `TieredModelConfig`
-    /// and log the result with a `-tiered` suffix; that is the same model at the same rate, so it is
-    /// shown under the base name.
+    /// and log the result with a `-tiered` marker (`gemini-3.7-flash-tiered`,
+    /// `gemini-4-hydrogen-tiered-high`); that is the same model at the same rate, so it is shown under
+    /// the base name.
     static func modelCandidates(id: String?, label: String?) -> [String] {
-        let id = id.map { $0.hasSuffix("-tiered") ? String($0.dropLast("-tiered".count)) : $0 }
+        let id = id.map { value in
+            if value.hasSuffix("-tiered") {
+                return String(value.dropLast("-tiered".count))
+            }
+            return value.replacingOccurrences(of: "-tiered-", with: "-")
+        }
         let isPlaceholder = id?.hasSuffix("-default") ?? false
         return (isPlaceholder ? [label, id] : [id, label]).compactMap { $0 }
     }

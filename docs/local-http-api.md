@@ -1,6 +1,6 @@
 # Local HTTP API
 
-OpenUsage exposes a read-only HTTP API on the loopback interface so other local apps can consume the same usage data shown in the menu bar.
+OpenUsage exposes an HTTP API on the loopback interface so other local apps can consume the same usage data shown in the menu bar. Usage reads are `GET`. The only write is `POST /v1/refresh`, and it is for the `openusage --force` command, not for browsers.
 
 **Base URL:** `http://127.0.0.1:6736`
 
@@ -48,6 +48,27 @@ Works for disabled providers too.
 > **Breaking change:** this route previously returned a single JSON object and `204` when the
 > provider had no snapshot. It now always returns an array, so the shape stays identical whether an
 > ID names one provider or a whole account family.
+
+### `POST /v1/refresh` and `POST /v1/refresh/:id`
+
+Tells the running menu-bar app to re-read Claude accounts, then force-refresh. Codex accounts are
+not re-read. With no `:id`, it refreshes every enabled card plus any enabled card whose account
+binding just changed. `:id` uses the same matching as `GET /v1/limits/:id` and refreshes those cards
+even when they are turned off, plus any other enabled card whose binding changed. Those fetches run
+together. The response is the limits envelope from `GET /v1/limits` or `GET /v1/limits/:id` only
+after every target has finished a fetch.
+
+The request is accepted only with the header `X-OpenUsage-Refresh: 1`. Anything else on that path,
+including `GET` and `OPTIONS`, is **405**. The header is not in `Access-Control-Allow-Headers`, and
+`POST` is not in `Access-Control-Allow-Methods`, so a browser page cannot call it. This route is not
+a general API.
+
+- **200 OK** — limits envelope after each target finished. A provider that failed the fetch is a finished attempt: its error is in the envelope, and a last-good snapshot can remain.
+- **404 Not Found** — `:id` names no known provider and no family. Nothing is refreshed.
+- **405 Method Not Allowed** — the path was used without the header, or with another method.
+- **503** `refresh_incomplete` — a target did not finish a fresh fetch, so the previous cache is not returned as a new result. The connection cap uses the same status with `server_busy`.
+
+A client that reaches this process and then times out, or that receives 5xx or any status other than 200 or 404, must report that failure. It must not start its own refresh.
 
 ### Everything else
 

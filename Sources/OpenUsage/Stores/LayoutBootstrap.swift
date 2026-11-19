@@ -19,6 +19,9 @@ struct LayoutInitialState {
     let expandedProviderIDs: Set<String>
     let defaultExpandedOnEnableIDs: Set<String>
     let menuBarStyle: MenuBarStyle
+    /// Every default the user has already been offered, including metrics whose provider is absent
+    /// from this launch. A later launch uses this to avoid turning a disabled metric back on.
+    let seededDefaults: Set<String>
 
     let shouldPersistPlaced: Bool
     let shouldPersistExpanded: Bool
@@ -36,7 +39,9 @@ enum LayoutBootstrap {
         defaults: LayoutDefaultSet
     ) -> LayoutInitialState {
         let hasStoredLayout = persistence.hasStoredLayout
-        let savedPlaced = persistence.loadPlaced()?.filter { registry.descriptor(id: $0.descriptorID) != nil }
+        let savedPlaced = persistence.loadPlaced()?.filter {
+            LayoutOrdering.retainsSavedMetric($0.descriptorID, registry: registry)
+        }
         let startingPlaced = savedPlaced ?? defaults.metricIDs
             .filter { registry.descriptor(id: $0) != nil }
             .map { PlacedWidget(descriptorID: $0) }
@@ -54,17 +59,21 @@ enum LayoutBootstrap {
         } ?? LayoutOrdering.defaultMetricOrder(registry: registry)
 
         // An existing value — including an empty array from a user who unpinned everything — wins.
-        let pinnedMetricIDs = Set(
-            (persistence.loadPins() ?? defaults.pinnedMetricIDs)
-                .filter { registry.descriptor(id: $0) != nil }
-        )
+        // Product defaults still require an installed descriptor. A saved pin whose provider is
+        // absent stays in the set so the card can return with the same stars.
+        let pinnedMetricIDs: Set<String>
+        if let savedPins = persistence.loadPins() {
+            pinnedMetricIDs = Set(savedPins.filter { LayoutOrdering.retainsSavedMetric($0, registry: registry) })
+        } else {
+            pinnedMetricIDs = Set(defaults.pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+        }
 
         // Expanded membership is a fresh-install default only. Existing layouts that predate the feature
         // keep every familiar metric above the caret unless the user later moves one.
         var shouldPersistExpanded = false
         var expandedMetricIDs: Set<String>
         if let savedExpanded = persistence.loadExpandedMetrics() {
-            expandedMetricIDs = Set(savedExpanded.filter { registry.descriptor(id: $0) != nil })
+            expandedMetricIDs = Set(savedExpanded.filter { LayoutOrdering.retainsSavedMetric($0, registry: registry) })
         } else if hasStoredLayout {
             expandedMetricIDs = []
         } else {
@@ -72,9 +81,9 @@ enum LayoutBootstrap {
             shouldPersistExpanded = true
         }
 
-        let expandedProviderIDs = Set(
-            (persistence.loadExpandedProviders() ?? []).filter { registry.provider(id: $0) != nil }
-        )
+        // An expanded card whose provider is absent stays expanded for the day it returns. The
+        // dashboard only walks the current registry, so the id is not shown while the card is gone.
+        let expandedProviderIDs = Set(persistence.loadExpandedProviders() ?? [])
 
         // A newly-shipped default metric is new to an existing user, so it may safely start below the
         // caret when that is its declared default. Metrics they already had are never silently hidden.
@@ -99,13 +108,19 @@ enum LayoutBootstrap {
         // saved queue wins so an explicit user move is not recreated on the next launch.
         let placedIDs = Set(seededResult.placed.map(\.descriptorID))
         let expandedNow = expandedMetricIDs
-        let isExpandOnEnableCandidate: (String) -> Bool = { [registry] id in
-            registry.descriptor(id: id) != nil && !expandedNow.contains(id) && !placedIDs.contains(id)
-        }
         let savedOnEnable = persistence.loadExpandOnEnable()
-        let defaultExpandedOnEnableIDs = Set(
-            (savedOnEnable ?? defaults.expandedMetricIDs).filter(isExpandOnEnableCandidate)
-        )
+        let defaultExpandedOnEnableIDs: Set<String>
+        if let savedOnEnable {
+            defaultExpandedOnEnableIDs = Set(savedOnEnable.filter { id in
+                LayoutOrdering.retainsSavedMetric(id, registry: registry)
+                    && !expandedNow.contains(id)
+                    && !placedIDs.contains(id)
+            })
+        } else {
+            defaultExpandedOnEnableIDs = Set(defaults.expandedMetricIDs.filter { id in
+                registry.descriptor(id: id) != nil && !expandedNow.contains(id) && !placedIDs.contains(id)
+            })
+        }
         let promotedQueuedIDs = Set(savedOnEnable ?? []).intersection(newlyAlwaysShown)
 
         return LayoutInitialState(
@@ -117,6 +132,7 @@ enum LayoutBootstrap {
             expandedProviderIDs: expandedProviderIDs,
             defaultExpandedOnEnableIDs: defaultExpandedOnEnableIDs,
             menuBarStyle: persistence.loadMenuBarStyle(),
+            seededDefaults: seededResult.seededDefaults,
             shouldPersistPlaced: seededResult.shouldPersistPlaced,
             shouldPersistExpanded: shouldPersistExpanded,
             shouldPersistExpandOnEnable: savedOnEnable == nil || !promotedQueuedIDs.isEmpty,
@@ -148,7 +164,7 @@ enum LayoutBootstrap {
         let seededDefaults: Set<String>
         var shouldPersistSeededDefaults = false
         if let saved = persistence.loadSeededDefaults() {
-            seededDefaults = Set(LayoutOrdering.knownMetricIDs(saved, registry: registry))
+            seededDefaults = Set(LayoutOrdering.retainedMetricIDs(saved, registry: registry))
             shouldPersistSeededDefaults = seededDefaults != Set(saved)
         } else if hasStoredLayout {
             seededDefaults = Set(LayoutOrdering.knownMetricIDs(defaults.migrationBaselineMetricIDs, registry: registry))
@@ -189,6 +205,31 @@ enum LayoutOrdering {
         }
     }
 
+    /// Provider id of a `provider.metric` descriptor id. Account ids may contain `@`; the metric
+    /// separator is the first dot.
+    static func providerID(forMetricID id: String) -> String? {
+        guard let dot = id.firstIndex(of: ".") else { return nil }
+        let providerID = String(id[..<dot])
+        return providerID.isEmpty ? nil : providerID
+    }
+
+    /// Keep a saved metric when its descriptor is installed, or when the whole provider is absent.
+    /// Drop an obsolete metric of a provider that is installed. Product defaults use `knownMetricIDs`
+    /// instead, so a missing provider is not seeded with metrics the user has never seen.
+    static func retainsSavedMetric(_ id: String, registry: WidgetRegistry) -> Bool {
+        if registry.descriptor(id: id) != nil { return true }
+        guard let providerID = providerID(forMetricID: id) else { return false }
+        return registry.provider(id: providerID) == nil
+    }
+
+    static func retainedMetricIDs(_ ids: [String], registry: WidgetRegistry) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { id in
+            guard retainsSavedMetric(id, registry: registry), seen.insert(id).inserted else { return false }
+            return true
+        }
+    }
+
     static func defaultMetricOrder(registry: WidgetRegistry) -> [String: [String]] {
         var result: [String: [String]] = [:]
         for provider in registry.providers {
@@ -207,6 +248,11 @@ enum LayoutOrdering {
             if let savedIDs = saved[provider.id] {
                 fallback[provider.id] = normalizedMetricIDs(savedIDs, validIDs: valid)
             }
+        }
+        // A provider that is not installed keeps the saved list as-is. Normalizing it against an
+        // empty descriptor list would erase the order before the account comes back.
+        for (providerID, savedIDs) in saved where registry.provider(id: providerID) == nil {
+            fallback[providerID] = savedIDs
         }
         return fallback
     }

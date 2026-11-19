@@ -62,12 +62,22 @@ final class ProcessRunnerTests: XCTestCase {
         defer { try? log.close() }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = [
-            "xctest", "-XCTest",
+        let testArgs = [
+            "-XCTest",
             "OpenUsageTests.ProcessRunnerTests/testOutputAndTimeoutInIsolatedProcess",
             Bundle(for: ProcessRunnerTests.self).bundleURL.path,
         ]
+        if let runnerPath = ProcessInfo.processInfo.arguments.first,
+           URL(fileURLWithPath: runnerPath).lastPathComponent == "xctest",
+           FileManager.default.isExecutableFile(atPath: runnerPath) {
+            // Invoke the active xctest binary directly so SIP-protected /usr/bin/xcrun does not
+            // strip DYLD_LIBRARY_PATH / DYLD_FRAMEWORK_PATH (needed for @rpath/libTesting.dylib).
+            process.executableURL = URL(fileURLWithPath: runnerPath)
+            process.arguments = testArgs
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            process.arguments = ["xctest"] + testArgs
+        }
         var environment = ProcessInfo.processInfo.environment
         environment[modeKey] = directory.path
         // A configuration inherited from Xcode must not override our exact one-test selection.

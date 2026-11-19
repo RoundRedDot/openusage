@@ -160,7 +160,11 @@ extension LayoutStore {
             let shown = customizeGroups.map(\.provider.id)
             guard let next = Self.reordered(shown, dragged: dragged, target: target) else { return false }
             let rest = orderedProviderIDs().filter { !next.contains($0) }
-            providerOrder = next + rest
+            providerOrder = Self.providerOrderKeepingAbsentCards(
+                saved: providerOrder,
+                live: next + rest,
+                isInstalled: { registry.provider(id: $0) != nil }
+            )
             persistProviderOrder()
             syncPlacedOrder()
             return true
@@ -323,6 +327,34 @@ extension LayoutStore {
         }
 
         return result
+    }
+
+    /// Enabled providers take `live` (the reordered visible cards, then disabled installed cards at
+    /// the tail). Cards missing from the registry stay in the slots they already occupied.
+    private static func providerOrderKeepingAbsentCards(
+        saved: [String],
+        live: [String],
+        isInstalled: (String) -> Bool
+    ) -> [String] {
+        var remaining = live
+        var merged: [String] = []
+        var seen = Set<String>()
+        for id in saved {
+            let nextID: String
+            if isInstalled(id) {
+                guard !remaining.isEmpty else { continue }
+                nextID = remaining.removeFirst()
+            } else {
+                nextID = id
+            }
+            if seen.insert(nextID).inserted {
+                merged.append(nextID)
+            }
+        }
+        for id in remaining where seen.insert(id).inserted {
+            merged.append(id)
+        }
+        return merged
     }
 
     /// Pure reorder: remove `dragged`, reinsert it adjacent to `target` (after it when moving down, before

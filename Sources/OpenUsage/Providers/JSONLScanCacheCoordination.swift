@@ -58,5 +58,6 @@ enum PersistentJSONLScanCaches {
         await CodexLogUsageScanner.flushPersistentCacheWrites()
         await GrokLogUsageScanner.flushPersistentCacheWrites()
         await PiUsageScanner.flushPersistentCacheWrites()
+        await OhMyPiProvider.flushPersistentCacheWrites()
     }
 }

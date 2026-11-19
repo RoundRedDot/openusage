@@ -43,6 +43,7 @@ enum ChineseStrings {
         "Org Credits": "组织额度",
         "Org Spend": "组织花费",
         "Spark Weekly": "Spark 周额度",
+        "Argon Weekly": "Argon 周额度",
         "Cursor Models": "Cursor 模型",
         "Other Models": "其他模型"
     ]
@@ -60,6 +61,10 @@ enum ChineseStrings {
         "Quit OpenUsage": "退出 OpenUsage",
         "About OpenUsage": "关于 OpenUsage",
         "Share Screenshot": "分享截图",
+        "Set Account Alias…": "设置账号别名…",
+        "Set Account Alias": "设置账号别名",
+        "Account Alias": "账号别名",
+        "Leave empty to use the original account name.": "留空则使用原账号名称。",
         "Update Available": "有可用更新",
         "Welcome to OpenUsage": "欢迎使用 OpenUsage",
         "Monitor Your AI Subscriptions with OpenUsage": "用 OpenUsage 监控你的 AI 订阅用量",
@@ -91,6 +96,9 @@ enum ChineseStrings {
         // Codex's multi-source note is assembled at runtime ("From your <a> and <b> (estimated)"),
         // so it has no fixed string to key on and stays English.
         "From your pi logs (estimated)": "来自你的 pi 日志（估算）",
+        "From your Oh My Pi logs (estimated)": "来自你的 Oh My Pi 日志（估算）",
+        "Oh My Pi not detected. Run `omp` once so it writes session logs.": "未检测到 Oh My Pi。请先运行一次 `omp` 以生成会话日志。",
+        "Invalid Oh My Pi profile. Check OMP_PROFILE or PI_PROFILE.": "Oh My Pi 配置名称无效。请检查 OMP_PROFILE 或 PI_PROFILE。",
         "From your Claude usage history (estimated)": "来自你的 Claude 用量历史（估算）",
         "From your Claude usage history and pi (estimated)": "来自你的 Claude 用量历史和 pi（估算）",
         "From your Codex logs (estimated)": "来自你的 Codex 日志（估算）",
@@ -132,6 +140,16 @@ enum ChineseStrings {
         "Copied to clipboard": "已复制到剪贴板",
         "Install Update": "安装更新",
         "OpenUsage %@ is ready to download.": "OpenUsage %@ 已可下载。",
+        "A New OpenUsage Is Coming": "新版 OpenUsage 即将到来",
+        "The next update removes spend and token tracking, with no transition period. You'll also sign in to each account inside the app.": "下次更新将移除花费和 token 统计，不设过渡期。你也需要在应用内登录各个账户。",
+        "Read What's Changing": "了解更新变化",
+        "Hide This Notice?": "隐藏此通知？",
+        "Hide Notice": "隐藏通知",
+        "The next update removes spend and token tracking for good. To keep them, stay on this version by turning off Check Automatically in Settings → Updates.": "下次更新将永久移除花费和 token 统计。若要保留这些功能，请在“设置 → 更新”中关闭“自动检查更新”，继续使用当前版本。",
+        "Refills your session limits now. This can't be undone.": "立即补满会话额度。此操作无法撤销。",
+        "Refills your weekly limits now. This can't be undone.": "立即补满周额度。此操作无法撤销。",
+        "Refills your session and weekly limits now. This can't be undone.": "立即补满会话和周额度。此操作无法撤销。",
+        "Your reset may still be going through. Check again in a minute.": "重置可能仍在处理中，请稍后再检查。",
 
         // Customize: the transient pill shown after starring / unstarring a metric.
         "Starred for menu bar": "已固定到菜单栏",
