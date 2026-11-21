@@ -539,7 +539,11 @@ final class PricingBundledResourceTests: XCTestCase {
             (
                 "gemini-4-neon",
                 [3.0, 3.0, 0.15, 15.0],
-                ["gemini-4-neon-low", "gemini-4-neon-high", "gemini-4-neon-xhigh", "Gemini 4 Neon (High)"]
+                [
+                    "gemini-4-neon-low", "gemini-4-neon-high", "gemini-4-neon-xhigh", "Gemini 4 Neon (High)",
+                    "gemini-pro-orchestrator-neon", "gemini-pro-orchestrator-neon-medium",
+                    "Orchestrator (Neon)", "Orchestrator (Neon High)"
+                ]
             ),
             (
                 "gemini-4-argon",

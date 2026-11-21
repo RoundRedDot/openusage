@@ -105,6 +105,8 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
             .init(index: 3, blob: antigravityGenerationBlob(model: "gemini-4-neon-high", input: 9, output: 0, label: "Gemini 4 Neon (High)", timestamp: timestamp)),
             .init(index: 4, blob: antigravityGenerationBlob(model: "gemini-default", input: 4, output: 0, label: "Gemini 4 Neon (XHigh)", timestamp: timestamp)),
             .init(index: 5, blob: antigravityGenerationBlob(model: "gemini-4-argon-trial", input: 3, output: 0, label: "Gemini 4 Argon (High)", timestamp: timestamp)),
+            .init(index: 6, blob: antigravityGenerationBlob(model: "gemini-pro-orchestrator-neon", input: 6, output: 0, label: "Orchestrator (Neon)", timestamp: timestamp)),
+            .init(index: 7, blob: antigravityGenerationBlob(model: nil, input: 2, output: 0, label: "Orchestrator (Neon)", timestamp: timestamp)),
         ]])
         let scanner = AntigravityDbUsageScanner(sqlite: sqlite, conversationsDirectories: { [fixture.url.path] })
 
@@ -117,7 +119,7 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
             [
                 "gemini-4-hydrogen": 15,
                 "gemini-4-carbon": 7,
-                "gemini-4-neon": 13,
+                "gemini-4-neon": 21,
                 "gemini-4-argon": 3,
             ]
         )

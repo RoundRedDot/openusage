@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://platform.claude.com/docs/en/about-claude/pricing for Claude Fable 5.1; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
-  "updated_at": "2026-11-19T10:30:00Z",
+  "updated_at": "2026-11-21T05:10:11Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -380,6 +380,7 @@
     { "pattern": "^gemini-3-pro(?=-)(?:-preview)?(?:-(?:none|n|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3-pro-preview" },
     { "pattern": "^gemini-3\\.1-pro(?:-preview)?(?:-(?:none|n|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.1-pro-preview" },
     { "$comment": "Antigravity internal IDs for Gemini 3.1 Pro: gemini-pro-agent is the High-effort wire ID (pi-antigravity routing table, OmniRoute#3696) and gemini-pro-default is the CLI's label when the picker is on its default, which resolves to Gemini 3.1 Pro (High) via the display label; the slug alone covers records without one. gemini-default is deliberately unaliased: its label has pointed at 3.5 Flash and 3.6 Flash over time.", "pattern": "^gemini-pro-(?:default|agent)$", "canonical": "gemini-3.1-pro-preview" },
+    { "$comment": "Antigravity orchestrator turns on Neon. Conversation rows store the internal id gemini-pro-orchestrator-neon and the display label Orchestrator (Neon); label-only rows carry just the label. Same Gemini 4 Neon rate. Other orchestrator families stay unaliased.", "pattern": "^gemini-pro-orchestrator-neon(?:-(?:none|n|low|medium|high|xhigh))?$", "canonical": "gemini-4-neon" },
     { "pattern": "^gpt-5(?:-(?:low|high))?-fast$", "canonical": "gpt-5-fast" },
     { "pattern": "^gpt-5(?:-(?:low|high))?$", "canonical": "gpt-5" },
     { "pattern": "^gpt-5\\.1(?:-(?:low|high))?-fast$", "canonical": "gpt-5-fast" },
@@ -471,6 +472,7 @@
     { "pattern": "(?i)^Gemini 4 Hydrogen(?: \\([^)]*\\))?$", "canonical": "gemini-4-hydrogen" },
     { "pattern": "(?i)^Gemini 4 Carbon(?: \\([^)]*\\))?$", "canonical": "gemini-4-carbon" },
     { "pattern": "(?i)^Gemini 4 Neon(?: \\([^)]*\\))?$", "canonical": "gemini-4-neon" },
+    { "pattern": "(?i)^Orchestrator \\(Neon(?: (?:None|Low|Medium|High|XHigh))?\\)$", "canonical": "gemini-4-neon" },
     { "pattern": "(?i)^GLM 5\\.2 \\(Auto[^)]*\\)$", "canonical": "glm-5.2" },
     { "pattern": "(?i)^GLM 5\\.3 \\(Auto[^)]*\\)$", "canonical": "glm-5.3" },
     { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "kimi-k3" }

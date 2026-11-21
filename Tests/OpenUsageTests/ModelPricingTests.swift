@@ -82,12 +82,19 @@ final class ModelPricingTests: XCTestCase {
             ("claude-opus-4-6-thinking", "claude-opus-4-6"),
             ("claude-sonnet-4-6-thinking-high", "claude-sonnet-4-6"),
             ("Claude Sonnet 4.6 (Thinking)", "claude-sonnet-4-6"),
+            ("gemini-pro-orchestrator-neon", "gemini-4-neon"),
+            ("gemini-pro-orchestrator-neon-high", "gemini-4-neon"),
+            ("Orchestrator (Neon)", "gemini-4-neon"),
+            ("Orchestrator (Neon High)", "gemini-4-neon"),
         ]
         for (label, canonical) in expectations {
             XCTAssertEqual(pricing.supplement.canonicalName(for: label), canonical, label)
             XCTAssertNotNil(pricing.resolve(model: label), label)
         }
-        for unaliased in ["gemini-default", "Gemini 3.1 Pro Turbo", "gemini-pro-agent-fast", "gemini-3.8-flash-tiered"] {
+        for unaliased in [
+            "gemini-default", "Gemini 3.1 Pro Turbo", "gemini-pro-agent-fast", "gemini-3.8-flash-tiered",
+            "gemini-pro-orchestrator", "gemini-pro-orchestrator-hydrogen", "Orchestrator", "Orchestrator (Hydrogen)"
+        ] {
             XCTAssertNil(pricing.supplement.canonicalName(for: unaliased), unaliased)
         }
     }

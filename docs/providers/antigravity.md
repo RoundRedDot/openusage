@@ -45,6 +45,8 @@ Subagents that Antigravity launches with a model tier (`flash_lite`, `flash`, `p
 
 Gemini 4 Argon trial, preview, and effort variants use the bundled [Argon API rates](../pricing.md) and share one `gemini-4-argon` breakdown row. Pricing updates also restore token counts and estimated spend for previously scanned local Argon conversations on refresh.
 
+Antigravity's Neon orchestrator logs the internal id `gemini-pro-orchestrator-neon` and the label `Orchestrator (Neon)`. Both use Gemini 4 Neon rates and count under `gemini-4-neon`. A row that only has the label is priced the same way.
+
 The transcript logs don't include token accounting, so they aren't used. Missing or unpriced models aren't assigned an invented price, and unusually large generation records are skipped with a warning to keep memory usage bounded.
 
 ## Troubleshooting
